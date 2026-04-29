@@ -9,7 +9,6 @@
   <ItemGroup>
     <Folder Include="mappings\" />
     <Folder Include="configurations\" />
-    <Folder Include="services\" />
   </ItemGroup>
 
   <ItemGroup>
