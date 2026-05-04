@@ -10,10 +10,10 @@ public interface IKekaClientService
     Task<KekaClient?> GetClientAsync(string clientId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a Keka client by ConnectWise company ID (stored as code in Keka).
-    /// Returns null if not found.
+    /// Fetches all Keka PSA clients in a single call.
+    /// Used to build an in-memory lookup before syncing.
     /// </summary>
-    Task<KekaClient?> GetClientByCodeAsync(int code, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<KekaClient>> GetAllClientsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a new Keka client.

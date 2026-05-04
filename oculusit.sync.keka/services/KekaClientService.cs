@@ -78,49 +78,38 @@ public sealed class KekaClientService(
         return envelope?.Data;
     }
 
-    public async Task<KekaClient?> GetClientByCodeAsync(int code, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<KekaClient>> GetAllClientsAsync(CancellationToken cancellationToken = default)
     {
         await SetAuthHeaderAsync(cancellationToken);
 
-        // Keka returns a paginated list filtered by code query param
-        var uri = new UriBuilder(BuildUri("/psa/clients")) { Query = $"code={code}" }.Uri;
-        _logger.LogDebug("Fetching Keka client by code {Code}", code);
+        var uri = BuildUri("/psa/clients");
+        _logger.LogDebug("Fetching all Keka clients.");
 
         var response = await _httpClient.GetAsync(uri, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            _logger.LogWarning("Received 401 fetching Keka client by code {Code}. Refreshing token.", code);
+            _logger.LogWarning("Received 401 fetching all Keka clients. Refreshing token.");
             await RefreshAuthHeaderAsync(cancellationToken);
             response = await _httpClient.GetAsync(uri, cancellationToken);
-        }
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            _logger.LogDebug("Keka client with code {Code} not found.", code);
-            return null;
         }
 
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Failed to get Keka client by code {Code}. StatusCode: {StatusCode}, Body: {Body}",
-                code, response.StatusCode, errorBody);
+            _logger.LogError("Failed to fetch all Keka clients. StatusCode: {StatusCode}, Body: {Body}",
+                response.StatusCode, errorBody);
             throw new HttpRequestException(
-                $"Keka GET /psa/clients?code={code} failed ({(int)response.StatusCode}): {errorBody}",
+                $"Keka GET /psa/clients failed ({(int)response.StatusCode}): {errorBody}",
                 null, response.StatusCode);
         }
 
-        // Keka wraps list results in { "data": [ ... ] }
-        var envelope = await response.Content.ReadFromJsonAsync<KekaDataListResponse<KekaClient>>(_jsonOptions, cancellationToken);
-        var client = envelope?.Data?.FirstOrDefault(c => c.Code == code);
+        var envelope = await response.Content
+            .ReadFromJsonAsync<KekaDataListResponse<KekaClient>>(_jsonOptions, cancellationToken);
 
-        if (client is null)
-            _logger.LogDebug("Keka client with code {Code} not found in results.", code);
-        else
-            _logger.LogInformation("Found Keka client {ClientId} with code {Code}", client.Id, code);
-
-        return client;
+        var clients = envelope?.Data ?? [];
+        _logger.LogInformation("Fetched {Count} Keka clients.", clients.Count);
+        return clients;
     }
 
     public async Task<KekaClient> CreateClientAsync(KekaClientRequest request, CancellationToken cancellationToken = default)

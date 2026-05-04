@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\oculusit.sync.core\oculusit.sync.core.csproj" />
     <ProjectReference Include="..\oculusit.sync.orchestration\oculusit.sync.orchestration.csproj" />
   </ItemGroup>
 </Project>

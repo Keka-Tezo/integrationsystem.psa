@@ -22,22 +22,28 @@ public sealed class CompanyOrchestrationService(
         if (usdCurrencyId is null)
             logger.LogWarning("USD currency ID not found in Keka. billingCurrencyId will be omitted.");
 
+        // Fetch all Keka clients once and index by ConnectWise company ID (code).
+        // Clients with a null code are ignored for sync purposes.
+        var allKekaClients = await kekaClientService.GetAllClientsAsync(cancellationToken);
+        var kekaClientsByCode = allKekaClients
+            .Where(c => c.Code.HasValue)
+            .ToDictionary(c => c.Code!.Value);
+
+        logger.LogInformation("Fetched {Count} existing Keka clients. {Indexed} have a ConnectWise code.",
+            allKekaClients.Count, kekaClientsByCode.Count);
+
         var created = 0;
         var updated = 0;
         var skipped = 0;
-        var failed = 0;
+        var failed  = 0;
 
         foreach (var company in companies)
         {
-            if (company.Name.ToLower() != "tezo")
-                continue;
-
             try
-          {
+            {
                 var request = KekaClientMapper.MapToKekaClientRequest(company, usdCurrencyId);
-                var existing = await kekaClientService.GetClientByCodeAsync(company.Id, cancellationToken);
 
-                if (existing is null)
+                if (!kekaClientsByCode.TryGetValue(company.Id, out var existing))
                 {
                     await kekaClientService.CreateClientAsync(request, cancellationToken);
                     logger.LogInformation("Created Keka client for ConnectWise company {CompanyId} - {CompanyName}",

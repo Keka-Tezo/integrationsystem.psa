@@ -53,8 +53,7 @@ public sealed class KekaBillingAddress
     public string? AddressLine2 { get; init; }
 
     [JsonPropertyName("countryCode")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? CountryCode { get; init; }
+    public string CountryCode { get; init; } = "US";
 
     [JsonPropertyName("city")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

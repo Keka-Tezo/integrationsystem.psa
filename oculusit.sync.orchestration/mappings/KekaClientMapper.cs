@@ -5,7 +5,8 @@ namespace oculusit.sync.orchestration.mappings;
 
 public static class KekaClientMapper
 {
-    private const string FallbackEmail = "blank_customer_email@oculusit.com";
+    private const string FallbackEmail       = "blank_customer_email@oculusit.com";
+    private const string FallbackCountryCode  = "US";
 
     // Well-known country name → ISO 3166-1 alpha-2 code mappings
     private static readonly Dictionary<string, string> _countryCodeMap = new(StringComparer.OrdinalIgnoreCase)
@@ -31,24 +32,28 @@ public static class KekaClientMapper
         var city         = NullIfEmpty(company.City);
         var state        = NullIfEmpty(company.State);
         var zip          = NullIfEmpty(company.Zip);
+        // CountryCode is mandatory in Keka — always falls back to "US" when not resolvable.
         var countryCode  = ResolveCountryCode(company.Country?.Name);
 
-        var hasBillingAddress = addressLine1 is not null || city is not null
-                             || state is not null || zip is not null;
+        // BillingAddress is always built so the mandatory countryCode is always present.
+        // If neither a currency ID nor any address detail exists, omit billing info entirely.
+        var hasBillingData = usdCurrencyId is not null
+                          || addressLine1 is not null || city is not null
+                          || state is not null || zip is not null;
 
-        KekaBillingAddress? billingAddress = hasBillingAddress
+        KekaBillingAddress? billingAddress = hasBillingData
             ? new KekaBillingAddress
             {
                 AddressLine1 = addressLine1,
                 AddressLine2 = addressLine2,
-                CountryCode  = countryCode,
+                CountryCode  = countryCode,   // never null — defaults to "US"
                 City         = city,
                 State        = state,
                 Zip          = zip
             }
             : null;
 
-        KekaBillingInfo? billingInfo = (billingAddress is not null || usdCurrencyId is not null)
+        KekaBillingInfo? billingInfo = hasBillingData
             ? new KekaBillingInfo
             {
                 BillingCurrencyId = usdCurrencyId,
@@ -70,17 +75,17 @@ public static class KekaClientMapper
         };
     }
 
-    private static string? ResolveCountryCode(string? countryName)
+    private static string ResolveCountryCode(string? countryName)
     {
         if (string.IsNullOrWhiteSpace(countryName))
-            return null;
+            return FallbackCountryCode;
 
         if (countryName.Length == 2)
             return countryName.ToUpperInvariant();
 
         return _countryCodeMap.TryGetValue(countryName, out var code)
             ? code
-            : null;
+            : FallbackCountryCode;
     }
 
     private static string? NullIfEmpty(string? value) =>
