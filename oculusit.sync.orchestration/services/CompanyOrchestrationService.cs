@@ -25,12 +25,15 @@ public sealed class CompanyOrchestrationService(
         var created = 0;
         var updated = 0;
         var skipped = 0;
-        var failed  = 0;
+        var failed = 0;
 
         foreach (var company in companies)
         {
+            if (company.Name.ToLower() != "tezo")
+                continue;
+
             try
-            {
+          {
                 var request = KekaClientMapper.MapToKekaClientRequest(company, usdCurrencyId);
                 var existing = await kekaClientService.GetClientByCodeAsync(company.Id, cancellationToken);
 
@@ -70,12 +73,12 @@ public sealed class CompanyOrchestrationService(
 
     private static bool ShouldUpdateClient(KekaClient existing, KekaClientRequest incoming)
     {
-        if (existing.Name        != incoming.Name)        return true;
+        if (existing.Name != incoming.Name) return true;
         if (existing.Description != incoming.Description) return true;
-        if (existing.Code        != incoming.Code)        return true;
-        if (existing.Phone       != incoming.Phone)       return true;
-        if (existing.Website     != incoming.Website)     return true;
-        if (existing.Email       != incoming.Email)       return true;
+        if (existing.Code != incoming.Code) return true;
+        if (existing.Phone != incoming.Phone) return true;
+        if (existing.Website != incoming.Website) return true;
+        if (existing.Email != incoming.Email) return true;
         return false;
     }
 }

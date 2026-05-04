@@ -8,20 +8,25 @@ public sealed class KekaClientRequest
     public string Name { get; init; } = string.Empty;
 
     [JsonPropertyName("description")]
-    public string Description { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; init; }
 
     [JsonPropertyName("code")]
     public int Code { get; init; }
 
     [JsonPropertyName("phone")]
-    public string Phone { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Phone { get; init; }
 
     [JsonPropertyName("website")]
-    public string Website { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Website { get; init; }
 
     [JsonPropertyName("email")]
-    public string Email { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Email { get; init; }
 
     [JsonPropertyName("billingInfo")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public KekaBillingInfo? BillingInfo { get; init; }
 }

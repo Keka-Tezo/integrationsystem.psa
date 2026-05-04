@@ -69,10 +69,10 @@ public sealed class KekaClientService(
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Failed to get Keka client {ClientId}. StatusCode: {StatusCode}, Body: {Body}",
                 clientId, response.StatusCode, errorBody);
-            response.EnsureSuccessStatusCode();
+            throw new HttpRequestException(
+                $"Keka GET /psa/clients/{clientId} failed ({(int)response.StatusCode}): {errorBody}",
+                null, response.StatusCode);
         }
-
-        // Keka wraps single objects in { "data": { ... } }
         var envelope = await response.Content.ReadFromJsonAsync<KekaDataResponse<KekaClient>>(_jsonOptions, cancellationToken);
         _logger.LogInformation("Successfully fetched Keka client {ClientId}", clientId);
         return envelope?.Data;
@@ -106,7 +106,9 @@ public sealed class KekaClientService(
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Failed to get Keka client by code {Code}. StatusCode: {StatusCode}, Body: {Body}",
                 code, response.StatusCode, errorBody);
-            response.EnsureSuccessStatusCode();
+            throw new HttpRequestException(
+                $"Keka GET /psa/clients?code={code} failed ({(int)response.StatusCode}): {errorBody}",
+                null, response.StatusCode);
         }
 
         // Keka wraps list results in { "data": [ ... ] }
@@ -142,7 +144,9 @@ public sealed class KekaClientService(
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Failed to create Keka client. StatusCode: {StatusCode}, Body: {Body}",
                 response.StatusCode, errorBody);
-            response.EnsureSuccessStatusCode();
+            throw new HttpRequestException(
+                $"Keka POST /psa/clients failed ({(int)response.StatusCode}): {errorBody}",
+                null, response.StatusCode);
         }
 
         // Keka wraps created object in { "data": { ... } }
@@ -175,7 +179,9 @@ public sealed class KekaClientService(
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Failed to update Keka client {ClientId}. StatusCode: {StatusCode}, Body: {Body}",
                 clientId, response.StatusCode, errorBody);
-            response.EnsureSuccessStatusCode();
+            throw new HttpRequestException(
+                $"Keka PUT /psa/clients/{clientId} failed ({(int)response.StatusCode}): {errorBody}",
+                null, response.StatusCode);
         }
 
         // Keka wraps updated object in { "data": { ... } }

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using oculusit.sync.keka.converters;
 
 namespace oculusit.sync.keka.modules;
 
@@ -14,7 +15,8 @@ public sealed class KekaClient
     public string Description { get; init; } = string.Empty;
 
     [JsonPropertyName("code")]
-    public int Code { get; init; }
+    [JsonConverter(typeof(NullableIntFromStringConverter))]
+    public int? Code { get; init; }
 
     [JsonPropertyName("phone")]
     public string Phone { get; init; } = string.Empty;
@@ -32,29 +34,37 @@ public sealed class KekaClient
 public sealed class KekaBillingInfo
 {
     [JsonPropertyName("billingCurrencyId")]
-    public object? BillingCurrencyId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BillingCurrencyId { get; init; }
 
     [JsonPropertyName("billingAddress")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public KekaBillingAddress? BillingAddress { get; init; }
 }
 
 public sealed class KekaBillingAddress
 {
     [JsonPropertyName("addressLine1")]
-    public string AddressLine1 { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AddressLine1 { get; init; }
 
     [JsonPropertyName("addressLine2")]
-    public string AddressLine2 { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AddressLine2 { get; init; }
 
     [JsonPropertyName("countryCode")]
-    public string CountryCode { get; init; } = "US";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CountryCode { get; init; }
 
     [JsonPropertyName("city")]
-    public string City { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? City { get; init; }
 
     [JsonPropertyName("state")]
-    public string State { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? State { get; init; }
 
     [JsonPropertyName("zip")]
-    public string Zip { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Zip { get; init; }
 }
