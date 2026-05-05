@@ -125,7 +125,7 @@ public sealed class KekaClientService(
         return allClients;
     }
 
-    public async Task<KekaClient> CreateClientAsync(KekaClientRequest request, CancellationToken cancellationToken = default)
+    public async Task<string> CreateClientAsync(KekaClientRequest request, CancellationToken cancellationToken = default)
     {
         await SetAuthHeaderAsync(cancellationToken);
 
@@ -151,16 +151,22 @@ public sealed class KekaClientService(
                 null, response.StatusCode);
         }
 
-        // Keka wraps created object in { "data": { ... } }
-        var envelope = await response.Content.ReadFromJsonAsync<KekaDataResponse<KekaClient>>(_jsonOptions, cancellationToken);
-        var result = envelope?.Data
-            ?? throw new InvalidOperationException("Keka create client response could not be deserialized.");
+        var envelope = await response.Content
+            .ReadFromJsonAsync<KekaCreateClientResponse>(_jsonOptions, cancellationToken);
 
-        _logger.LogInformation("Successfully created Keka client {ClientId}", result.Id);
-        return result;
+        if (envelope is null || !envelope.Succeeded || string.IsNullOrEmpty(envelope.Data))
+        {
+            var errors = envelope?.Errors is { Count: > 0 } e ? string.Join(", ", e) : "none";
+            throw new InvalidOperationException(
+                $"Keka create client for '{request.Name}' failed. Message: {envelope?.Message}. Errors: {errors}");
+        }
+
+        _logger.LogInformation("Successfully created Keka client {KekaClientId} for name {Name}",
+            envelope.Data, request.Name);
+        return envelope.Data;
     }
 
-    public async Task<KekaClient> UpdateClientAsync(string clientId, KekaClientRequest request, CancellationToken cancellationToken = default)
+    public async Task UpdateClientAsync(string clientId, KekaClientRequest request, CancellationToken cancellationToken = default)
     {
         await SetAuthHeaderAsync(cancellationToken);
 
@@ -186,12 +192,16 @@ public sealed class KekaClientService(
                 null, response.StatusCode);
         }
 
-        // Keka wraps updated object in { "data": { ... } }
-        var envelope = await response.Content.ReadFromJsonAsync<KekaDataResponse<KekaClient>>(_jsonOptions, cancellationToken);
-        var result = envelope?.Data
-            ?? throw new InvalidOperationException("Keka update client response could not be deserialized.");
+        var envelope = await response.Content
+            .ReadFromJsonAsync<KekaUpdateClientResponse>(_jsonOptions, cancellationToken);
+
+        if (envelope is null || !envelope.Succeeded)
+        {
+            var errors = envelope?.Errors is { Count: > 0 } e ? string.Join(", ", e) : "none";
+            throw new InvalidOperationException(
+                $"Keka update client '{clientId}' failed. Message: {envelope?.Message}. Errors: {errors}");
+        }
 
         _logger.LogInformation("Successfully updated Keka client {ClientId}", clientId);
-        return result;
     }
 }

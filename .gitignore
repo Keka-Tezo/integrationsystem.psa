@@ -48,6 +48,11 @@ publish/
 !.vscode/extensions.json
 
 # ---------------------------
+# ASP.NET / Launch Settings
+# ---------------------------
+**/Properties/launchSettings.json
+
+# ---------------------------
 # NuGet
 # ---------------------------
 *.nupkg

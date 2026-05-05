@@ -1,4 +1,5 @@
 using oculusit.sync.core.interfaces;
+using oculusit.sync.core.models;
 using oculusit.sync.orchestration;
 
 namespace oculusit.sync;
@@ -14,15 +15,28 @@ public sealed class Worker(
         try
         {
             logger.LogInformation("Worker started. Beginning ConnectWise to Keka sync.");
+            // Capture start time before any data is fetched so mid-run changes are
+            // included in the next run's window.
+            var syncStartedAt = DateTime.UtcNow;
 
-            var syncState = await syncStateService.GetAsync("company", stoppingToken);
+            var syncState = await syncStateService.GetAsync("Company", stoppingToken);
             if (syncState is null)
             {
                 logger.LogInformation("No previous sync state found in DynamoDB. This is a fresh run.");
-                await orchestration.SyncCompaniesToKekaAsync(stoppingToken);
+                var syncedEntries = await orchestration.SyncCompaniesToKekaAsync(stoppingToken);
+
+                await syncStateService.SaveAsync(new SyncState
+                {
+                    SyncType = "Company",
+                    Companies = syncedEntries,
+                    LastUpdatedAt = syncStartedAt
+                }, stoppingToken);
+
+                logger.LogInformation("Sync state saved. {Count} company mappings recorded.", syncedEntries.Count);
             }                
             else
-                logger.LogInformation("Last successful company sync was at {LastSyncedAt}.", syncState.LastSyncedAt);
+                logger.LogInformation("Last successful company sync was at {LastUpdatedAt}.", syncState.LastUpdatedAt);
+            
                       
             logger.LogInformation("Sync complete. Worker shutting down.");
         }

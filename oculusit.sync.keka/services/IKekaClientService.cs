@@ -16,12 +16,12 @@ public interface IKekaClientService
     Task<IReadOnlyList<KekaClient>> GetAllClientsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a new Keka client.
+    /// Creates a new Keka client. Returns the newly created Keka client ID.
     /// </summary>
-    Task<KekaClient> CreateClientAsync(KekaClientRequest request, CancellationToken cancellationToken = default);
+    Task<string> CreateClientAsync(KekaClientRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates an existing Keka client by Keka client ID.
     /// </summary>
-    Task<KekaClient> UpdateClientAsync(string clientId, KekaClientRequest request, CancellationToken cancellationToken = default);
+    Task UpdateClientAsync(string clientId, KekaClientRequest request, CancellationToken cancellationToken = default);
 }

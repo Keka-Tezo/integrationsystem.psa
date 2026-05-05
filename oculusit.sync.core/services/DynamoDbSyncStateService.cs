@@ -13,8 +13,11 @@ public sealed class DynamoDbSyncStateService(
     IOptions<DynamoDbConfiguration> options,
     ILogger<DynamoDbSyncStateService> logger) : ISyncStateService
 {
-    private const string KeyAttribute          = "syncType";
-    private const string LastSyncedAtAttribute = "lastSyncedAt";
+    private const string KeyAttribute           = "syncType";
+    private const string LastUpdatedAtAttribute = "lastUpdatedAt";
+    private const string CompaniesAttribute     = "companies";
+    private const string IdAttribute            = "id";
+    private const string ClientIdAttribute      = "clientId";
 
     private readonly string _tableName = options.Value.TableName;
 
@@ -39,14 +42,35 @@ public sealed class DynamoDbSyncStateService(
             return null;
         }
 
-        DateTime? lastSyncedAt = null;
-        if (response.Item.TryGetValue(LastSyncedAtAttribute, out var attr)
-            && DateTime.TryParse(attr.S, out var parsed))
+        DateTime? lastUpdatedAt = null;
+        if (response.Item.TryGetValue(LastUpdatedAtAttribute, out var tsAttr)
+            && DateTime.TryParse(tsAttr.S, out var parsed))
         {
-            lastSyncedAt = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+            lastUpdatedAt = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
         }
 
-        return new SyncState { SyncType = syncType, LastSyncedAt = lastSyncedAt };
+        var companies = new List<SyncedCompanyEntry>();
+        if (response.Item.TryGetValue(CompaniesAttribute, out var listAttr) && listAttr.L is { Count: > 0 })
+        {
+            foreach (var entry in listAttr.L)
+            {
+                if (entry.M is null) continue;
+                entry.M.TryGetValue(IdAttribute, out var idAttr);
+                entry.M.TryGetValue(ClientIdAttribute, out var clientIdAttr);
+                companies.Add(new SyncedCompanyEntry
+                {
+                    Id       = idAttr?.S ?? string.Empty,
+                    ClientId = clientIdAttr?.S ?? string.Empty
+                });
+            }
+        }
+
+        return new SyncState
+        {
+            SyncType      = syncType,
+            LastUpdatedAt = lastUpdatedAt,
+            Companies     = companies
+        };
     }
 
     public async Task SaveAsync(SyncState state, CancellationToken cancellationToken = default)
@@ -58,8 +82,23 @@ public sealed class DynamoDbSyncStateService(
             [KeyAttribute] = new AttributeValue { S = state.SyncType }
         };
 
-        if (state.LastSyncedAt.HasValue)
-            item[LastSyncedAtAttribute] = new AttributeValue { S = state.LastSyncedAt.Value.ToString("o") };
+        if (state.LastUpdatedAt.HasValue)
+            item[LastUpdatedAtAttribute] = new AttributeValue { S = state.LastUpdatedAt.Value.ToString("o") };
+
+        if (state.Companies.Count > 0)
+        {
+            item[CompaniesAttribute] = new AttributeValue
+            {
+                L = state.Companies.Select(c => new AttributeValue
+                {
+                    M = new Dictionary<string, AttributeValue>
+                    {
+                        [IdAttribute]       = new AttributeValue { S = c.Id },
+                        [ClientIdAttribute] = new AttributeValue { S = c.ClientId }
+                    }
+                }).ToList()
+            };
+        }
 
         var request = new PutItemRequest
         {
@@ -69,7 +108,7 @@ public sealed class DynamoDbSyncStateService(
 
         await dynamoDb.PutItemAsync(request, cancellationToken);
 
-        logger.LogInformation("Saved sync state for syncType={SyncType}, lastSyncedAt={LastSyncedAt}.",
-            state.SyncType, state.LastSyncedAt);
+        logger.LogInformation("Saved sync state for syncType={SyncType}, lastUpdatedAt={LastUpdatedAt}, companies={Count}.",
+            state.SyncType, state.LastUpdatedAt, state.Companies.Count);
     }
 }
