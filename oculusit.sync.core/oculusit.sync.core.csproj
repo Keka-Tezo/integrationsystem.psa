@@ -7,14 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="models\" />
-    <Folder Include="interfaces\" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.18.1" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.36" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.7" />
   </ItemGroup>
 
 </Project>

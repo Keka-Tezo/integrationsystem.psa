@@ -82,34 +82,47 @@ public sealed class KekaClientService(
     {
         await SetAuthHeaderAsync(cancellationToken);
 
-        var uri = BuildUri("/psa/clients");
-        _logger.LogDebug("Fetching all Keka clients.");
+        var allClients = new List<KekaClient>();
+        var pageNumber = 1;
+        bool hasMoreItems;
 
-        var response = await _httpClient.GetAsync(uri, cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        do
         {
-            _logger.LogWarning("Received 401 fetching all Keka clients. Refreshing token.");
-            await RefreshAuthHeaderAsync(cancellationToken);
-            response = await _httpClient.GetAsync(uri, cancellationToken);
+            var uri = new Uri(BuildUri("/psa/clients"), $"?pageNumber={pageNumber}");
+            _logger.LogDebug("Fetching Keka clients page {PageNumber}.", pageNumber);
+
+            var response = await _httpClient.GetAsync(uri, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _logger.LogWarning("Received 401 fetching Keka clients page {PageNumber}. Refreshing token.", pageNumber);
+                await RefreshAuthHeaderAsync(cancellationToken);
+                response = await _httpClient.GetAsync(uri, cancellationToken);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Failed to fetch Keka clients page {PageNumber}. StatusCode: {StatusCode}, Body: {Body}",
+                    pageNumber, response.StatusCode, errorBody);
+                throw new HttpRequestException(
+                    $"Keka GET /psa/clients?pageNumber={pageNumber} failed ({(int)response.StatusCode}): {errorBody}",
+                    null, response.StatusCode);
+            }
+
+            var envelope = await response.Content
+                .ReadFromJsonAsync<KekaDataListResponse<KekaClient>>(_jsonOptions, cancellationToken);
+
+            if (envelope?.Data is { Count: > 0 } page)
+                allClients.AddRange(page);
+
+            hasMoreItems = envelope?.HasMoreItems ?? false;
+            pageNumber++;
         }
+        while (hasMoreItems);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Failed to fetch all Keka clients. StatusCode: {StatusCode}, Body: {Body}",
-                response.StatusCode, errorBody);
-            throw new HttpRequestException(
-                $"Keka GET /psa/clients failed ({(int)response.StatusCode}): {errorBody}",
-                null, response.StatusCode);
-        }
-
-        var envelope = await response.Content
-            .ReadFromJsonAsync<KekaDataListResponse<KekaClient>>(_jsonOptions, cancellationToken);
-
-        var clients = envelope?.Data ?? [];
-        _logger.LogInformation("Fetched {Count} Keka clients.", clients.Count);
-        return clients;
+        _logger.LogInformation("Fetched {Count} Keka clients total.", allClients.Count);
+        return allClients;
     }
 
     public async Task<KekaClient> CreateClientAsync(KekaClientRequest request, CancellationToken cancellationToken = default)

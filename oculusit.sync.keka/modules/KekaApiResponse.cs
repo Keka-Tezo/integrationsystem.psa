@@ -12,10 +12,20 @@ internal sealed class KekaDataResponse<T>
 }
 
 /// <summary>
-/// Wraps all Keka API responses that return a list under a "data" key.
+/// Wraps all Keka API responses that return a list under a "data" key,
+/// including pagination metadata.
 /// </summary>
 internal sealed class KekaDataListResponse<T>
 {
     [JsonPropertyName("data")]
     public List<T>? Data { get; init; }
+
+    [JsonPropertyName("pageNumber")]
+    public int PageNumber { get; init; }
+
+    [JsonPropertyName("pageSize")]
+    public int PageSize { get; init; }
+
+    [JsonPropertyName("hasMoreItems")]
+    public bool HasMoreItems { get; init; }
 }

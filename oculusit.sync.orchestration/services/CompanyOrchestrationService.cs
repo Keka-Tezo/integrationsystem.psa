@@ -26,8 +26,8 @@ public sealed class CompanyOrchestrationService(
         // Clients with a null code are ignored for sync purposes.
         var allKekaClients = await kekaClientService.GetAllClientsAsync(cancellationToken);
         var kekaClientsByCode = allKekaClients
-            .Where(c => c.Code.HasValue)
-            .ToDictionary(c => c.Code!.Value);
+            .Where(c => !string.IsNullOrEmpty(c.Code))
+            .ToDictionary(c => c.Code!);
 
         logger.LogInformation("Fetched {Count} existing Keka clients. {Indexed} have a ConnectWise code.",
             allKekaClients.Count, kekaClientsByCode.Count);
@@ -43,7 +43,7 @@ public sealed class CompanyOrchestrationService(
             {
                 var request = KekaClientMapper.MapToKekaClientRequest(company, usdCurrencyId);
 
-                if (!kekaClientsByCode.TryGetValue(company.Id, out var existing))
+                if (!kekaClientsByCode.TryGetValue(company.Id.ToString(), out var existing))
                 {
                     await kekaClientService.CreateClientAsync(request, cancellationToken);
                     logger.LogInformation("Created Keka client for ConnectWise company {CompanyId} - {CompanyName}",
@@ -81,10 +81,7 @@ public sealed class CompanyOrchestrationService(
     {
         if (existing.Name != incoming.Name) return true;
         if (existing.Description != incoming.Description) return true;
-        if (existing.Code != incoming.Code) return true;
-        if (existing.Phone != incoming.Phone) return true;
-        if (existing.Website != incoming.Website) return true;
-        if (existing.Email != incoming.Email) return true;
+        if (existing.Code != incoming.Code.ToString()) return true;
         return false;
     }
 }

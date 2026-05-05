@@ -1,3 +1,4 @@
+using oculusit.sync.core.interfaces;
 using oculusit.sync.orchestration;
 
 namespace oculusit.sync;
@@ -5,7 +6,8 @@ namespace oculusit.sync;
 public sealed class Worker(
     ILogger<Worker> logger,
     IHostApplicationLifetime lifetime,
-    ICompanyOrchestrationService orchestration) : BackgroundService
+    ICompanyOrchestrationService orchestration,
+    ISyncStateService syncStateService) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -13,8 +15,15 @@ public sealed class Worker(
         {
             logger.LogInformation("Worker started. Beginning ConnectWise to Keka sync.");
 
-            await orchestration.SyncCompaniesToKekaAsync(stoppingToken);
-
+            var syncState = await syncStateService.GetAsync("company", stoppingToken);
+            if (syncState is null)
+            {
+                logger.LogInformation("No previous sync state found in DynamoDB. This is a fresh run.");
+                await orchestration.SyncCompaniesToKekaAsync(stoppingToken);
+            }                
+            else
+                logger.LogInformation("Last successful company sync was at {LastSyncedAt}.", syncState.LastSyncedAt);
+                      
             logger.LogInformation("Sync complete. Worker shutting down.");
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

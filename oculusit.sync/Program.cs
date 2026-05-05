@@ -1,4 +1,5 @@
 using oculusit.sync.connectwise;
+using oculusit.sync.core;
 using oculusit.sync.exceptions;
 using oculusit.sync.keka;
 using oculusit.sync.orchestration;
@@ -18,6 +19,8 @@ namespace oculusit.sync
             try
             {
                 var builder = Host.CreateApplicationBuilder(args);
+
+                builder.Services.AddCoreServices(builder.Configuration);
 
                 Log.Logger = new LoggerConfiguration()
                     .ReadFrom.Configuration(builder.Configuration)

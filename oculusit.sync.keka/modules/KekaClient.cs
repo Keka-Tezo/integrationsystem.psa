@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using oculusit.sync.keka.converters;
 
 namespace oculusit.sync.keka.modules;
 
@@ -11,24 +10,74 @@ public sealed class KekaClient
     [JsonPropertyName("name")]
     public string Name { get; init; } = string.Empty;
 
-    [JsonPropertyName("description")]
-    public string Description { get; init; } = string.Empty;
-
     [JsonPropertyName("code")]
-    [JsonConverter(typeof(NullableIntFromStringConverter))]
-    public int? Code { get; init; }
+    public string? Code { get; init; }
 
-    [JsonPropertyName("phone")]
-    public string Phone { get; init; } = string.Empty;
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
 
-    [JsonPropertyName("website")]
-    public string Website { get; init; } = string.Empty;
+    [JsonPropertyName("billingAddress")]
+    public KekaBillingAddress? BillingAddress { get; init; }
+
+    [JsonPropertyName("clientContacts")]
+    public IReadOnlyList<KekaClientContact> ClientContacts { get; init; } = [];
+
+    [JsonPropertyName("attributes")]
+    public IReadOnlyDictionary<string, string> Attributes { get; init; } = new Dictionary<string, string>();
+
+    [JsonPropertyName("additionalFields")]
+    public IReadOnlyList<KekaAdditionalField> AdditionalFields { get; init; } = [];
+}
+
+public sealed class KekaClientContact
+{
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("clientId")]
+    public string ClientId { get; init; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
 
     [JsonPropertyName("email")]
-    public string Email { get; init; } = string.Empty;
+    public string? Email { get; init; }
 
-    [JsonPropertyName("billingInfo")]
-    public KekaBillingInfo? BillingInfo { get; init; }
+    [JsonPropertyName("phone")]
+    public string? Phone { get; init; }
+}
+
+public sealed class KekaAdditionalField
+{
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("title")]
+    public string Title { get; init; } = string.Empty;
+
+    [JsonPropertyName("value")]
+    public string? Value { get; init; }
+}
+
+public sealed class KekaBillingAddress
+{
+    [JsonPropertyName("addressLine1")]
+    public string? AddressLine1 { get; init; }
+
+    [JsonPropertyName("addressLine2")]
+    public string? AddressLine2 { get; init; }
+
+    [JsonPropertyName("countryCode")]
+    public string CountryCode { get; init; } = "US";
+
+    [JsonPropertyName("city")]
+    public string? City { get; init; }
+
+    [JsonPropertyName("state")]
+    public string? State { get; init; }
+
+    [JsonPropertyName("zip")]
+    public string? Zip { get; init; }
 }
 
 public sealed class KekaBillingInfo
@@ -40,30 +89,4 @@ public sealed class KekaBillingInfo
     [JsonPropertyName("billingAddress")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public KekaBillingAddress? BillingAddress { get; init; }
-}
-
-public sealed class KekaBillingAddress
-{
-    [JsonPropertyName("addressLine1")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? AddressLine1 { get; init; }
-
-    [JsonPropertyName("addressLine2")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? AddressLine2 { get; init; }
-
-    [JsonPropertyName("countryCode")]
-    public string CountryCode { get; init; } = "US";
-
-    [JsonPropertyName("city")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? City { get; init; }
-
-    [JsonPropertyName("state")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? State { get; init; }
-
-    [JsonPropertyName("zip")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Zip { get; init; }
 }
