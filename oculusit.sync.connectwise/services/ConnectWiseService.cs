@@ -102,7 +102,7 @@ public sealed class ConnectWiseService(
     {
         var allCompanies = new List<ConnectWiseCompany>();
         var page = 1;
-        var condition = $"lastUpdated >= '{since.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}'";
+        var condition = $"lastUpdated >= '{since:yyyy-MM-ddTHH:mm:ssZ}'";
 
         _logger.LogInformation("Starting incremental ConnectWise company fetch since {Since}", since);
 

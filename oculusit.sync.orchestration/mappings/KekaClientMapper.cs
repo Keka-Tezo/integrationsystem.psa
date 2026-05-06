@@ -70,7 +70,7 @@ public static class KekaClientMapper
             Website     = NullIfEmpty(company.Website),
             Email       = string.IsNullOrWhiteSpace(company.InvoiceCCEmailAddress)
                             ? FallbackEmail
-                            : company.InvoiceCCEmailAddress,
+                            : ExtractFirstEmail(company.InvoiceCCEmailAddress),
             BillingInfo = billingInfo
         };
     }
@@ -90,4 +90,13 @@ public static class KekaClientMapper
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value;
+
+    /// <summary>
+    /// Returns the first email address from a semicolon-separated list,
+    /// or the original value if it contains no semicolons.
+    /// </summary>
+    private static string ExtractFirstEmail(string email) =>
+        email.Contains(';')
+            ? email.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0]
+            : email.Trim();
 }

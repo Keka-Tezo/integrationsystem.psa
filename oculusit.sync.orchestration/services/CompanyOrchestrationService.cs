@@ -40,7 +40,7 @@ public sealed class CompanyOrchestrationService(
 
         var syncedEntries = new List<SyncedCompanyEntry>();
 
-        foreach (var company in companies.Take(25))
+        foreach (var company in companies)
         {
             try
             {
@@ -103,8 +103,10 @@ public sealed class CompanyOrchestrationService(
     }
 
     public async Task<IReadOnlyList<SyncedCompanyEntry>> SyncCompaniesIncrementalAsync(
-        DateTime since, CancellationToken cancellationToken = default)
+        SyncState syncState, CancellationToken cancellationToken = default)
     {
+        var since = syncState.LastUpdatedAt!.Value;
+
         var companies = await connectWiseService.GetCompaniesSinceAsync(since, cancellationToken);
         logger.LogInformation("Incremental fetch returned {Count} companies updated since {Since}.", companies.Count, since);
 
@@ -115,10 +117,10 @@ public sealed class CompanyOrchestrationService(
         if (usdCurrencyId is null)
             logger.LogWarning("USD currency ID not found in Keka. billingCurrencyId will be omitted.");
 
-        var allKekaClients = await kekaClientService.GetAllClientsAsync(cancellationToken);
-        var kekaClientsByCode = allKekaClients
-            .Where(c => !string.IsNullOrEmpty(c.Code))
-            .ToDictionary(c => c.Code!);
+        // Build a lookup from ConnectWise company ID → Keka client ID using the
+        // persisted sync state. This avoids fetching all Keka clients on every run.
+        var kekaIdByCompanyId = syncState.Companies
+            .ToDictionary(e => e.Id, e => e.ClientId);
 
         var created = 0;
         var updated = 0;
@@ -132,25 +134,30 @@ public sealed class CompanyOrchestrationService(
             try
             {
                 var request = KekaClientMapper.MapToKekaClientRequest(company, usdCurrencyId);
+                var companyIdStr = company.Id.ToString();
 
-                if (!kekaClientsByCode.TryGetValue(company.Id.ToString(), out var existing))
+                if (kekaIdByCompanyId.TryGetValue(companyIdStr, out var kekaClientId))
                 {
-                    var kekaClientId = await kekaClientService.CreateClientAsync(request, cancellationToken);
-                    logger.LogInformation("Incremental: Created Keka client for ConnectWise company {CompanyId} - {CompanyName}",
-                        company.Id, company.Name);
-                    created++;
-                    newEntries.Add(new SyncedCompanyEntry
-                    {
-                        Id       = company.Id.ToString(),
-                        ClientId = kekaClientId
-                    });
+                    // Known company — update the existing Keka client directly by ID.
+                    await kekaClientService.UpdateClientAsync(kekaClientId, request, cancellationToken);
+                    logger.LogInformation(
+                        "Incremental: Updated Keka client {KekaClientId} for ConnectWise company {CompanyId} - {CompanyName}",
+                        kekaClientId, company.Id, company.Name);
+                    updated++;
                 }
                 else
                 {
-                    await kekaClientService.UpdateClientAsync(existing.Id, request, cancellationToken);
-                    logger.LogInformation("Incremental: Updated Keka client {KekaClientId} for ConnectWise company {CompanyId} - {CompanyName}",
-                        existing.Id, company.Id, company.Name);
-                    updated++;
+                    // New company — create a Keka client and record the new mapping.
+                    var newKekaClientId = await kekaClientService.CreateClientAsync(request, cancellationToken);
+                    logger.LogInformation(
+                        "Incremental: Created Keka client {KekaClientId} for ConnectWise company {CompanyId} - {CompanyName}",
+                        newKekaClientId, company.Id, company.Name);
+                    created++;
+                    newEntries.Add(new SyncedCompanyEntry
+                    {
+                        Id       = companyIdStr,
+                        ClientId = newKekaClientId
+                    });
                 }
             }
             catch (Exception ex)

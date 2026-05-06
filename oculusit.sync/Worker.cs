@@ -37,7 +37,7 @@ public sealed class Worker(
             else
             {
                 logger.LogInformation("Incremental run. Last sync was at {LastUpdatedAt}.", syncState.LastUpdatedAt);
-                var newEntries = await orchestration.SyncCompaniesIncrementalAsync(syncState.LastUpdatedAt!.Value, stoppingToken);
+                var newEntries = await orchestration.SyncCompaniesIncrementalAsync(syncState, stoppingToken);
 
                 await syncStateService.AppendCompaniesAsync("Company", newEntries, syncStartedAt, stoppingToken);
 
