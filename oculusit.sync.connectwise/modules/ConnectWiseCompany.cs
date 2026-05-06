@@ -49,6 +49,15 @@ public sealed class ConnectWiseCompany
     [JsonPropertyName("invoiceCCEmailAddress")]
     public string InvoiceCCEmailAddress { get; init; } = string.Empty;
 
+    [JsonPropertyName("_info")]
+    public ConnectWiseCompanyInfo? Info { get; init; }
+
+    public DateTime? DateEntered => Info?.DateEntered;
+    public DateTime? LastUpdated => Info?.LastUpdated;
+}
+
+public sealed class ConnectWiseCompanyInfo
+{
     [JsonPropertyName("dateEntered")]
     public DateTime? DateEntered { get; init; }
 

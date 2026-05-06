@@ -9,4 +9,10 @@ public interface IConnectWiseService
     /// and returns the complete list stored in memory.
     /// </summary>
     Task<IReadOnlyList<ConnectWiseCompany>> GetAllCompaniesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches only companies updated at or after <paramref name="since"/> (UTC),
+    /// ordered by lastUpdated ascending.
+    /// </summary>
+    Task<IReadOnlyList<ConnectWiseCompany>> GetCompaniesSinceAsync(DateTime since, CancellationToken cancellationToken = default);
 }

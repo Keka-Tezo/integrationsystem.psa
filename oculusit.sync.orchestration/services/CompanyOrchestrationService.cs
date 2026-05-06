@@ -101,4 +101,70 @@ public sealed class CompanyOrchestrationService(
         if (existing.Code != incoming.Code.ToString()) return true;
         return false;
     }
+
+    public async Task<IReadOnlyList<SyncedCompanyEntry>> SyncCompaniesIncrementalAsync(
+        DateTime since, CancellationToken cancellationToken = default)
+    {
+        var companies = await connectWiseService.GetCompaniesSinceAsync(since, cancellationToken);
+        logger.LogInformation("Incremental fetch returned {Count} companies updated since {Since}.", companies.Count, since);
+
+        if (companies.Count == 0)
+            return [];
+
+        var usdCurrencyId = await kekaCurrencyService.GetUsdCurrencyIdAsync(cancellationToken);
+        if (usdCurrencyId is null)
+            logger.LogWarning("USD currency ID not found in Keka. billingCurrencyId will be omitted.");
+
+        var allKekaClients = await kekaClientService.GetAllClientsAsync(cancellationToken);
+        var kekaClientsByCode = allKekaClients
+            .Where(c => !string.IsNullOrEmpty(c.Code))
+            .ToDictionary(c => c.Code!);
+
+        var created = 0;
+        var updated = 0;
+        var failed  = 0;
+
+        // Only newly created entries are returned — updates don't change the mapping.
+        var newEntries = new List<SyncedCompanyEntry>();
+
+        foreach (var company in companies)
+        {
+            try
+            {
+                var request = KekaClientMapper.MapToKekaClientRequest(company, usdCurrencyId);
+
+                if (!kekaClientsByCode.TryGetValue(company.Id.ToString(), out var existing))
+                {
+                    var kekaClientId = await kekaClientService.CreateClientAsync(request, cancellationToken);
+                    logger.LogInformation("Incremental: Created Keka client for ConnectWise company {CompanyId} - {CompanyName}",
+                        company.Id, company.Name);
+                    created++;
+                    newEntries.Add(new SyncedCompanyEntry
+                    {
+                        Id       = company.Id.ToString(),
+                        ClientId = kekaClientId
+                    });
+                }
+                else
+                {
+                    await kekaClientService.UpdateClientAsync(existing.Id, request, cancellationToken);
+                    logger.LogInformation("Incremental: Updated Keka client {KekaClientId} for ConnectWise company {CompanyId} - {CompanyName}",
+                        existing.Id, company.Id, company.Name);
+                    updated++;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Incremental: Failed to sync ConnectWise company {CompanyId} - {CompanyName} to Keka",
+                    company.Id, company.Name);
+                failed++;
+            }
+        }
+
+        logger.LogInformation(
+            "Incremental Keka sync complete. Created: {Created}, Updated: {Updated}, Failed: {Failed}",
+            created, updated, failed);
+
+        return newEntries;
+    }
 }

@@ -111,4 +111,50 @@ public sealed class DynamoDbSyncStateService(
         logger.LogInformation("Saved sync state for syncType={SyncType}, lastUpdatedAt={LastUpdatedAt}, companies={Count}.",
             state.SyncType, state.LastUpdatedAt, state.Companies.Count);
     }
+
+    public async Task AppendCompaniesAsync(
+        string syncType,
+        IReadOnlyList<SyncedCompanyEntry> newEntries,
+        DateTime lastUpdatedAt,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("Appending {Count} company entries to DynamoDB for syncType={SyncType}.", newEntries.Count, syncType);
+
+        var newItems = newEntries.Select(c => new AttributeValue
+        {
+            M = new Dictionary<string, AttributeValue>
+            {
+                [IdAttribute]       = new AttributeValue { S = c.Id },
+                [ClientIdAttribute] = new AttributeValue { S = c.ClientId }
+            }
+        }).ToList();
+
+        var updateRequest = new UpdateItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = syncType }
+            },
+            // list_append appends newItems to the existing companies list.
+            // if_not_exists handles the edge case where companies attribute doesn't exist yet.
+            UpdateExpression = "SET #companies = list_append(if_not_exists(#companies, :empty), :newItems), #lastUpdatedAt = :lastUpdatedAt",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#companies"]     = CompaniesAttribute,
+                ["#lastUpdatedAt"] = LastUpdatedAtAttribute
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":newItems"]      = new AttributeValue { L = newItems },
+                [":empty"]         = new AttributeValue { L = [] },
+                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
+            }
+        };
+
+        await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
+
+        logger.LogInformation("Appended {Count} company entries and updated lastUpdatedAt={LastUpdatedAt} for syncType={SyncType}.",
+            newEntries.Count, lastUpdatedAt, syncType);
+    }
 }

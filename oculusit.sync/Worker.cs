@@ -18,7 +18,7 @@ public sealed class Worker(
             // Capture start time before any data is fetched so mid-run changes are
             // included in the next run's window.
             var syncStartedAt = DateTime.UtcNow;
-
+           
             var syncState = await syncStateService.GetAsync("Company", stoppingToken);
             if (syncState is null)
             {
@@ -27,15 +27,22 @@ public sealed class Worker(
 
                 await syncStateService.SaveAsync(new SyncState
                 {
-                    SyncType = "Company",
-                    Companies = syncedEntries,
+                    SyncType      = "Company",
+                    Companies     = syncedEntries,
                     LastUpdatedAt = syncStartedAt
                 }, stoppingToken);
 
                 logger.LogInformation("Sync state saved. {Count} company mappings recorded.", syncedEntries.Count);
-            }                
+            }
             else
-                logger.LogInformation("Last successful company sync was at {LastUpdatedAt}.", syncState.LastUpdatedAt);
+            {
+                logger.LogInformation("Incremental run. Last sync was at {LastUpdatedAt}.", syncState.LastUpdatedAt);
+                var newEntries = await orchestration.SyncCompaniesIncrementalAsync(syncState.LastUpdatedAt!.Value, stoppingToken);
+
+                await syncStateService.AppendCompaniesAsync("Company", newEntries, syncStartedAt, stoppingToken);
+
+                logger.LogInformation("Incremental sync state updated. {Count} new company mappings appended.", newEntries.Count);
+            }
             
                       
             logger.LogInformation("Sync complete. Worker shutting down.");

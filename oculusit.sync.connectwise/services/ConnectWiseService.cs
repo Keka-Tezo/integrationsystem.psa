@@ -57,7 +57,7 @@ public sealed class ConnectWiseService(
         {
             var relativeUrl = $"/company/companies" +
                               $"?pageSize={_config.PageSize}&page={page}" +
-                              $"&fields=id,identifier,name,status,type,addressLine1,addressLine2,city,state,zip,country,phoneNumber,faxNumber,website,invoiceCCEmailAddress,dateEntered,lastUpdated" +
+                              $"&fields=id,identifier,name,status,type,addressLine1,addressLine2,city,state,zip,country,phoneNumber,faxNumber,website,invoiceCCEmailAddress,_info" +
                               $"&orderBy=id asc";
 
             _logger.LogDebug("Fetching ConnectWise companies page {Page}", page);
@@ -93,6 +93,59 @@ public sealed class ConnectWiseService(
         }
 
         _logger.LogInformation("Completed ConnectWise company fetch. Total companies loaded: {Total}", allCompanies.Count);
+
+        return allCompanies;
+    }
+
+    public async Task<IReadOnlyList<ConnectWiseCompany>> GetCompaniesSinceAsync(
+        DateTime since, CancellationToken cancellationToken = default)
+    {
+        var allCompanies = new List<ConnectWiseCompany>();
+        var page = 1;
+        var condition = $"lastUpdated >= '{since.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}'";
+
+        _logger.LogInformation("Starting incremental ConnectWise company fetch since {Since}", since);
+
+        while (true)
+        {
+            var relativeUrl = $"/company/companies" +
+                              $"?pageSize={_config.PageSize}&page={page}" +
+                              $"&conditions={Uri.EscapeDataString(condition)}" +
+                              $"&fields=id,identifier,name,status,type,addressLine1,addressLine2,city,state,zip,country,phoneNumber,faxNumber,website,invoiceCCEmailAddress,_info" +
+                              $"&orderBy=lastUpdated asc";
+
+            _logger.LogDebug("Fetching incremental ConnectWise companies page {Page}", page);
+
+            using var request = CreateRequest(HttpMethod.Get, relativeUrl);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("ConnectWise API error on incremental page {Page} — {StatusCode}: {Body}",
+                    page, response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
+
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var pageResults = await JsonSerializer.DeserializeAsync<List<ConnectWiseCompany>>(
+                stream, _jsonOptions, cancellationToken);
+
+            if (pageResults is null || pageResults.Count == 0)
+                break;
+
+            allCompanies.AddRange(pageResults);
+
+            _logger.LogDebug("Fetched {Count} companies on incremental page {Page}. Total so far: {Total}",
+                pageResults.Count, page, allCompanies.Count);
+
+            if (pageResults.Count < _config.PageSize)
+                break;
+
+            page++;
+        }
+
+        _logger.LogInformation("Completed incremental ConnectWise company fetch. Total companies loaded: {Total}", allCompanies.Count);
 
         return allCompanies;
     }
