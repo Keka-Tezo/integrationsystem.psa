@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-oculusit.sync-9cfa85e2-df2b-4686-95d9-9aee4a1c191f</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.18.1" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.36" />
+    <PackageReference Include="AWSSDK.SSO" Version="4.0.2.27" />
+    <PackageReference Include="AWSSDK.SSOOIDC" Version="4.0.3.28" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.6" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\oculusit.sync.core\oculusit.sync.core.csproj" />
+    <ProjectReference Include="..\oculusit.sync.orchestration\oculusit.sync.orchestration.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="services\" />
+  </ItemGroup>
+</Project>
