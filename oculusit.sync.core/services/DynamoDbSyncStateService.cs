@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using oculusit.sync.core.configurations;
 using oculusit.sync.core.interfaces;
 using oculusit.sync.core.models;
+using System.Globalization;
 
 namespace oculusit.sync.core.services;
 
@@ -50,9 +51,9 @@ public sealed class DynamoDbSyncStateService(
 
         DateTime? lastUpdatedAt = null;
         if (response.Item.TryGetValue(LastUpdatedAtAttribute, out var tsAttr)
-            && DateTime.TryParse(tsAttr.S, out var parsed))
+            && DateTime.TryParseExact(tsAttr.S, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
         {
-            lastUpdatedAt = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+            lastUpdatedAt = parsed;
         }
 
         var companies = new List<SyncedCompanyEntry>();
