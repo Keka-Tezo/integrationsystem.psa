@@ -8,7 +8,7 @@ using oculusit.sync.orchestration.mappings;
 namespace oculusit.sync.orchestration.services;
 
 public sealed class CompanyOrchestrationService(
-    IConnectWiseService connectWiseService,
+    IConnectWiseCompanyService connectWiseService,
     IKekaClientService kekaClientService,
     IKekaCurrencyService kekaCurrencyService,
     ILogger<CompanyOrchestrationService> logger) : ICompanyOrchestrationService
