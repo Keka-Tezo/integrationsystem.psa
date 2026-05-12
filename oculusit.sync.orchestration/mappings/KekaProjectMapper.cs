@@ -5,8 +5,11 @@ namespace oculusit.sync.orchestration.mappings;
 
 public static class KekaProjectMapper
 {
-    // Minimum date accepted by SQL Server datetime columns (1753-01-01).
+    // Minimum date accepted by SQL Server datetime columns (1753-01-01). Used as StartDate fallback.
     private static readonly DateTime SqlMinDate = new(1753, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    // Maximum date accepted by SQL Server datetime columns (9999-12-31). Used as EndDate fallback.
+    private static readonly DateTime SqlMaxDate = new(9999, 12, 31, 0, 0, 0, DateTimeKind.Utc);
 
     // Maximum length of Keka's Group.Description column.
     private const int MaxDescriptionLength = 100;
@@ -23,7 +26,7 @@ public static class KekaProjectMapper
             Code        = project.Id.ToString(),
             Status      = MapStatus(project.Status?.Name),
             StartDate   = project.ActualStart ?? SqlMinDate,
-            EndDate     = project.ActualEnd   ?? SqlMinDate,
+            EndDate     = project.ActualEnd   ?? SqlMaxDate,
             IsBillable  = true
         };
     }
@@ -37,7 +40,7 @@ public static class KekaProjectMapper
             Code        = project.Id.ToString(),
             Status      = MapStatus(project.Status?.Name),
             StartDate   = project.ActualStart ?? SqlMinDate,
-            EndDate     = project.ActualEnd   ?? SqlMinDate,
+            EndDate     = project.ActualEnd   ?? SqlMaxDate,
             IsBillable  = true
         };
     }
