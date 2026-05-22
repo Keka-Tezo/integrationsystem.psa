@@ -51,6 +51,9 @@ internal sealed class KekaUpdateClientResponse
 
 internal sealed class KekaDataListResponse<T>
 {
+    [JsonPropertyName("succeeded")]
+    public bool Succeeded { get; init; }
+
     [JsonPropertyName("data")]
     public List<T>? Data { get; init; }
 
@@ -62,6 +65,12 @@ internal sealed class KekaDataListResponse<T>
 
     [JsonPropertyName("totalPages")]
     public int TotalPages { get; init; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+
+    [JsonPropertyName("errors")]
+    public IReadOnlyList<string> Errors { get; init; } = [];
 }
 
 /// <summary>
@@ -119,4 +128,23 @@ internal sealed class KekaCreateTaskResponse
 
     [JsonPropertyName("data")]
     public string? Data { get; init; }
+}
+
+
+/// <summary>
+/// Wraps the Keka API response for fetching employee by email.
+/// </summary>
+internal sealed class KekaGetEmployeeResponse
+{
+    [JsonPropertyName("data")]
+    public KekaEmployee? Data { get; init; }
+
+    [JsonPropertyName("succeeded")]
+    public bool Succeeded { get; init; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+
+    [JsonPropertyName("errors")]
+    public IReadOnlyList<string>? Errors { get; init; }
 }

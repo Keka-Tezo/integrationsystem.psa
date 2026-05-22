@@ -51,10 +51,14 @@ public static class KekaServiceExtensions
                     options.TotalRequestTimeout.Timeout = ProjectTotalTimeout;
                 });
 
+        services.AddHttpClient(nameof(KekaEmployeeService))
+                .AddStandardResilienceHandler();
+
         services.AddSingleton<IKekaTokenService, KekaTokenService>();
         services.AddSingleton<IKekaClientService, KekaClientService>();
         services.AddSingleton<IKekaCurrencyService, KekaCurrencyService>();
         services.AddSingleton<IKekaProjectService, KekaProjectService>();
+        services.AddSingleton<IKekaEmployeeService, KekaEmployeeService>();
 
         return services;
     }
