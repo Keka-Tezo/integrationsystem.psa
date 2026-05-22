@@ -259,3 +259,22 @@ public sealed class KekaCreateProjectAllocationResponse
     [JsonPropertyName("data")]
     public string? Data { get; init; }
 }
+
+/// <summary>
+/// Wraps the Keka API response for timesheet entry creation.
+/// data is true when entry is accepted.
+/// </summary>
+public sealed class KekaAddTimesheetEntryResponse
+{
+    [JsonPropertyName("data")]
+    public string? Data { get; init; }
+
+    [JsonPropertyName("succeeded")]
+    public bool Succeeded { get; init; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+
+    [JsonPropertyName("errors")]
+    public IReadOnlyList<string> Errors { get; init; } = [];
+}
