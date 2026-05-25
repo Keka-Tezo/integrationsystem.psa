@@ -116,7 +116,7 @@ public sealed class ProjectOrchestrationService(
             .ToDictionary(e => e.Id, e => e.ClientId);
 
         var statusMapping = KekaProjectMapper.BuildStatusMapping(projectStatusSyncState?.ProjectStatuses ?? []);
-        logger.LogInformation("Loaded {Count} project status mappings.", statusMapping.Count);
+        logger.LogInformation("Loaded {Count} project status mappings from metadata.", statusMapping.Count);
 
         // Fetch all existing Keka projects and index by Code (ConnectWise project ID).
         var allKekaProjects = await kekaProjectService.GetAllProjectsAsync(cancellationToken);
@@ -259,7 +259,7 @@ public sealed class ProjectOrchestrationService(
     public async Task<ProjectSyncResult> SyncProjectsIncrementalAsync(
         SyncState projectSyncState,
         SyncState companySyncState,
-        SyncState? metadataSyncState,
+        SyncState? projectStatusSyncState,
         IReadOnlyList<string> retryProjectIds,
         CancellationToken cancellationToken = default)
     {

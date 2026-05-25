@@ -78,7 +78,7 @@ public sealed partial class Worker
         {
             logger.LogInformation("Incremental project sync. Last sync was at {LastUpdatedAt}.", projectSyncState.LastUpdatedAt);
 
-            var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, metadataSyncState, retryProjectIds, stoppingToken);
+            var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, projectStatusSyncState, retryProjectIds, stoppingToken);
             var lastUpdatedAt  = result.LastRecordUpdatedAt ?? syncStartedAt;
 
             await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);

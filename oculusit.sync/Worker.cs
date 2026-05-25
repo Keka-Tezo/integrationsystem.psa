@@ -27,7 +27,7 @@ public sealed partial class Worker(
 
             if (initialCompanySyncState is not null && initialProjectSyncState is not null)
             {
-                await SyncMetadataAsync(syncStartedAt, stoppingToken);
+                await SyncProjectStatusAsync(syncStartedAt, stoppingToken);
                 var retryCompanyIds = await GetRetryCompanyIdsFromSyncStateAsync(stoppingToken);
                 await SyncCompaniesAsync(syncStartedAt, retryCompanyIds, stoppingToken);
                 var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
