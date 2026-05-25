@@ -13,18 +13,18 @@ public interface IProjectOrchestrationService
     /// <summary>
     /// Full sync — fetches all ConnectWise projects and records them.
     /// <paramref name="companySyncState"/> is used to resolve the Keka client ID.
-    /// <paramref name="metadataSyncState"/> provides the project status mapping from DynamoDB metadata.
+    /// <paramref name="projectStatusSyncState"/> provides the project status mapping from DynamoDB.
     /// </summary>
     Task<ProjectSyncResult> SyncProjectsAsync(
         SyncState companySyncState,
-        SyncState? metadataSyncState,
+        SyncState? projectStatusSyncState,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Incremental sync — fetches projects updated since <paramref name="projectSyncState"/>.LastUpdatedAt,
     /// merges with retry projects from RetryProjects sync state, and processes unique project IDs.
     /// <paramref name="companySyncState"/> is used to resolve the Keka client ID.
-    /// <paramref name="metadataSyncState"/> provides the project status mapping from DynamoDB metadata.
+    /// <paramref name="projectStatusSyncState"/> provides the project status mapping from DynamoDB.
     /// Returns newly created entries and any failures.
     /// </summary>
     Task<ProjectSyncResult> SyncProjectsIncrementalAsync(

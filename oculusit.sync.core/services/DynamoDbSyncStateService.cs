@@ -21,6 +21,7 @@ public sealed class DynamoDbSyncStateService(
     private const string ProjectsAttribute         = "projects";
     private const string InitialProjectsAttribute  = "initialProjects";
     private const string FailedProjectsAttribute   = "failedProjects";
+    private const string FailedCompaniesAttribute  = "failedCompanies";
     private const string ProjectStatusesAttribute       = "projectStatuses";
     private const string FailedProjectStatusesAttribute = "failedProjectStatuses";
     private const string IdAttribute               = "id";
@@ -173,8 +174,7 @@ public sealed class DynamoDbSyncStateService(
             InitialCompanies      = initialCompanies,
             Projects              = projects,
             InitialProjects       = initialProjects,
-            ProjectStatuses       = ReadProjectStatuses(response.Item),
-            FailedProjectStatuses = ReadFailedMetadata(response.Item)
+            ProjectStatuses       = ReadProjectStatuses(response.Item)
         };
     }
 
@@ -391,7 +391,7 @@ public sealed class DynamoDbSyncStateService(
         DateTime lastUpdatedAt,
         CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Saving {Count} failed project entries to DynamoDB (syncType={SyncType}).", failedEntries.Count, SyncTypes.Failures);
+        logger.LogDebug("Saving {Count} failed project entries to DynamoDB (syncType={SyncType}).", failedEntries.Count, SyncTypes.FailedProjects);
 
         var failedItems = failedEntries.Select(p => new AttributeValue
         {
@@ -408,25 +408,25 @@ public sealed class DynamoDbSyncStateService(
             TableName = _tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.Failures }
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.FailedProjects }
             },
-            // Full replace every run so the Failures record always reflects the latest state.
-            UpdateExpression = "SET #projects = :projects, #lastUpdatedAt = :lastUpdatedAt",
+            // Full replace every run so the FailedProject record always reflects the latest state.
+            UpdateExpression = "SET #failedProjects = :failedProjects, #lastUpdatedAt = :lastUpdatedAt",
             ExpressionAttributeNames = new Dictionary<string, string>
             {
-                ["#projects"]      = ProjectsAttribute,
-                ["#lastUpdatedAt"] = LastUpdatedAtAttribute
+                ["#failedProjects"] = FailedProjectsAttribute,
+                ["#lastUpdatedAt"]  = LastUpdatedAtAttribute
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                [":projects"]      = new AttributeValue { L = failedItems },
-                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
+                [":failedProjects"] = new AttributeValue { L = failedItems },
+                [":lastUpdatedAt"]  = new AttributeValue { S = lastUpdatedAt.ToString("o") }
             }
         };
 
         await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
 
-        logger.LogInformation("Saved {Count} failed project entries to Failures record, lastUpdatedAt={LastUpdatedAt}.",
+        logger.LogInformation("Saved {Count} failed project entries to FailedProject record, lastUpdatedAt={LastUpdatedAt}.",
             failedEntries.Count, lastUpdatedAt);
     }
 
@@ -435,7 +435,7 @@ public sealed class DynamoDbSyncStateService(
         DateTime lastUpdatedAt,
         CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Saving {Count} failed company entries to DynamoDB (syncType={SyncType}).", failedEntries.Count, SyncTypes.Failures);
+        logger.LogDebug("Saving {Count} failed company entries to DynamoDB (syncType={SyncType}).", failedEntries.Count, SyncTypes.FailedCompanies);
 
         var failedItems = failedEntries.Select(c => new AttributeValue
         {
@@ -452,25 +452,25 @@ public sealed class DynamoDbSyncStateService(
             TableName = _tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.Failures }
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.FailedCompanies }
             },
-            // Full replace every run so the Failures record always reflects the latest state.
-            UpdateExpression = "SET #companies = :companies, #lastUpdatedAt = :lastUpdatedAt",
+            // Full replace every run so the FailedCompany record always reflects the latest state.
+            UpdateExpression = "SET #failedCompanies = :failedCompanies, #lastUpdatedAt = :lastUpdatedAt",
             ExpressionAttributeNames = new Dictionary<string, string>
             {
-                ["#companies"]     = CompaniesAttribute,
-                ["#lastUpdatedAt"] = LastUpdatedAtAttribute
+                ["#failedCompanies"] = FailedCompaniesAttribute,
+                ["#lastUpdatedAt"]   = LastUpdatedAtAttribute
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                [":companies"]     = new AttributeValue { L = failedItems },
-                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
+                [":failedCompanies"] = new AttributeValue { L = failedItems },
+                [":lastUpdatedAt"]   = new AttributeValue { S = lastUpdatedAt.ToString("o") }
             }
         };
 
         await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
 
-        logger.LogInformation("Saved {Count} failed company entries to Failures record, lastUpdatedAt={LastUpdatedAt}.",
+        logger.LogInformation("Saved {Count} failed company entries to FailedCompany record, lastUpdatedAt={LastUpdatedAt}.",
             failedEntries.Count, lastUpdatedAt);
     }
 
@@ -729,12 +729,12 @@ public sealed class DynamoDbSyncStateService(
             retryEntries.Count, lastUpdatedAt);
     }
 
-    public async Task SaveMetadataAsync(
+    public async Task SaveProjectStatusAsync(
         IReadOnlyList<ProjectStatusEntry> entries,
         DateTime lastUpdatedAt,
         CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Saving {Count} project status metadata entries to DynamoDB.", entries.Count);
+        logger.LogDebug("Saving {Count} project status entries to DynamoDB.", entries.Count);
 
         var statusItems = entries.Select(s => new AttributeValue
         {
@@ -751,7 +751,7 @@ public sealed class DynamoDbSyncStateService(
             TableName = _tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.Metadata }
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.ProjectStatus }
             },
             // Full replace every run — merging of MappedValue is handled in orchestration before this call.
             UpdateExpression = "SET #statuses = :statuses, #lastUpdatedAt = :lastUpdatedAt",
@@ -769,22 +769,22 @@ public sealed class DynamoDbSyncStateService(
 
         await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
 
-        logger.LogInformation("Saved {Count} project status metadata entries.", entries.Count);
+        logger.LogInformation("Saved {Count} project status entries.", entries.Count);
     }
 
-    public async Task SaveFailedMetadataAsync(
-        FailedMetadataEntry? failure,
+    public async Task SaveFailedProjectStatusAsync(
+        FailedProjectStatusEntry? failure,
         DateTime lastUpdatedAt,
         CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Saving failed metadata entry (null = reset) to DynamoDB.");
+        logger.LogDebug("Saving failed project status entry (null = reset) to DynamoDB.");
 
         var updateRequest = new UpdateItemRequest
         {
             TableName = _tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.Metadata }
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.ProjectStatus }
             },
             ExpressionAttributeNames = new Dictionary<string, string>
             {
@@ -817,8 +817,8 @@ public sealed class DynamoDbSyncStateService(
         await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
 
         logger.LogInformation(failure is null
-            ? "Cleared failedProjectStatuses on Metadata record."
-            : "Saved failedProjectStatuses with error: {Error}.", failure?.ErrorMessage);
+            ? "Cleared failed project status entry on ProjectStatus record."
+            : "Saved failed project status entry with error: {Error}.", failure?.ErrorMessage);
     }
 
     private static IReadOnlyList<ProjectStatusEntry> ReadProjectStatuses(
@@ -869,14 +869,5 @@ public sealed class DynamoDbSyncStateService(
         }
 
         return Task.FromResult<IReadOnlyList<FailedProjectEntry>>(failed);
-    }
-
-    private static FailedMetadataEntry? ReadFailedMetadata(Dictionary<string, AttributeValue> item)
-    {
-        if (!item.TryGetValue(FailedProjectStatusesAttribute, out var attr) || attr.M is null)
-            return null;
-
-        attr.M.TryGetValue(ErrorMessageAttribute, out var errAttr);
-        return new FailedMetadataEntry { ErrorMessage = errAttr?.S ?? string.Empty };
     }
 }

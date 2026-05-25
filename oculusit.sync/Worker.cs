@@ -10,7 +10,7 @@ public sealed partial class Worker(
     IHostApplicationLifetime lifetime,
     ICompanyOrchestrationService companyOrchestration,
     IProjectOrchestrationService projectOrchestration,
-    IMetadataOrchestrationService metadataOrchestration,
+    IProjectStatusOrchestrationService projectStatusOrchestration,
     IConnectWiseTimeEntryService connectWiseTimeEntryService,
     ISyncStateService syncStateService) : BackgroundService
 {

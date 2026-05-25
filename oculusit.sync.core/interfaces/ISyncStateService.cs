@@ -17,13 +17,13 @@ public interface ISyncStateService
     Task AppendProjectsAsync(string syncType, IReadOnlyList<SyncedProjectEntry> newEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Overwrites the <c>projects</c> attribute on the <c>Failures</c> record with the latest failed project entries.
+    /// Overwrites the <c>failedProjects</c> attribute on the <c>FailedProject</c> record with the latest failed project entries.
     /// Pass an empty list to clear all failures after a clean run.
     /// </summary>
     Task SaveFailedProjectsAsync(IReadOnlyList<FailedProjectEntry> failedEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Overwrites the companies and lastUpdatedAt on the <c>Failures</c> record with the latest failed company entries.
+    /// Overwrites the <c>failedCompanies</c> attribute on the <c>FailedCompany</c> record with the latest failed company entries.
     /// Pass an empty list to clear all failures after a clean run.
     /// </summary>
     Task SaveFailedCompaniesAsync(IReadOnlyList<FailedCompanyEntry> failedEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
@@ -62,14 +62,14 @@ public interface ISyncStateService
     Task SaveProjectSummaryAsync(ProjectSyncSummary summary, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fully replaces the ProjectStatuses metadata list each run.
+    /// Fully replaces the Project Statuses list each run.
     /// New entries have an empty MappedValue; existing MappedValues are preserved on update.
     /// </summary>
-    Task SaveMetadataAsync(IReadOnlyList<ProjectStatusEntry> entries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+    Task SaveProjectStatusAsync(IReadOnlyList<ProjectStatusEntry> entries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Persists a metadata sync failure against the Metadata record.
+    /// Persists a Project Status sync failure against the Project Status record.
     /// Pass null to clear the failure (i.e. reset after a successful run).
     /// </summary>
-    Task SaveFailedMetadataAsync(FailedMetadataEntry? failure, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+    Task SaveFailedProjectStatusAsync(FailedProjectStatusEntry? failure, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 }
