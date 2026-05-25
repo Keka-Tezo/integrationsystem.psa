@@ -17,13 +17,13 @@ public interface ISyncStateService
     Task AppendProjectsAsync(string syncType, IReadOnlyList<SyncedProjectEntry> newEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Overwrites the <c>projects</c> attribute on the <c>Failures</c> record with the latest failed project entries.
+    /// Overwrites the <c>failedProjects</c> attribute on the <c>FailedProject</c> record with the latest failed project entries.
     /// Pass an empty list to clear all failures after a clean run.
     /// </summary>
     Task SaveFailedProjectsAsync(IReadOnlyList<FailedProjectEntry> failedEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Overwrites the companies and lastUpdatedAt on the <c>Failures</c> record with the latest failed company entries.
+    /// Overwrites the <c>failedCompanies</c> attribute on the <c>FailedCompany</c> record with the latest failed company entries.
     /// Pass an empty list to clear all failures after a clean run.
     /// </summary>
     Task SaveFailedCompaniesAsync(IReadOnlyList<FailedCompanyEntry> failedEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
