@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using oculusit.sync.connectwise.modules;
 using oculusit.sync.connectwise.services;
 using oculusit.sync.core.models;
 using oculusit.sync.keka.modules;
@@ -258,7 +259,8 @@ public sealed class ProjectOrchestrationService(
     public async Task<ProjectSyncResult> SyncProjectsIncrementalAsync(
         SyncState projectSyncState,
         SyncState companySyncState,
-        SyncState? projectStatusSyncState,
+        SyncState? metadataSyncState,
+        IReadOnlyList<string> retryProjectIds,
         CancellationToken cancellationToken = default)
     {
         var since = projectSyncState.LastUpdatedAt!.Value;
@@ -266,7 +268,28 @@ public sealed class ProjectOrchestrationService(
         var projects = await connectWiseProjectService.GetProjectsSinceAsync(since, cancellationToken);
         logger.LogInformation("Incremental fetch returned {Count} projects updated since {Since}.", projects.Count, since);
 
-        if (projects.Count == 0)
+        var retryNumericIds = retryProjectIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => int.TryParse(id.Trim(), out var parsed) ? parsed : (int?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        IReadOnlyList<ConnectWiseProject> retryProjects = [];
+        if (retryNumericIds.Count > 0)
+        {
+            retryProjects = await connectWiseProjectService.GetProjectsByIdsAsync(retryNumericIds, cancellationToken);
+            logger.LogInformation("RetryProjects fetch returned {Count} projects.", retryProjects.Count);
+        }
+
+        var mergedProjects = projects
+            .Concat(retryProjects)
+            .GroupBy(p => p.Id)
+            .Select(g => g.Last())
+            .ToList();
+
+        if (mergedProjects.Count == 0)
             return new ProjectSyncResult();
 
         var kekaClientIdByCompanyId = companySyncState.Companies
@@ -295,7 +318,7 @@ public sealed class ProjectOrchestrationService(
         var failedEntries = new List<FailedProjectEntry>();
         var retryEntries  = new List<RetryProjectEntry>();
 
-        foreach (var project in projects)
+        foreach (var project in mergedProjects)
         {
             try
             {
@@ -418,8 +441,8 @@ public sealed class ProjectOrchestrationService(
             SyncedEntries       = newEntries,
             FailedEntries       = failedEntries,
             RetryEntries        = retryEntries,
-            LastRecordUpdatedAt = projects[^1].LastUpdated,
-            Total     = projects.Count,
+            LastRecordUpdatedAt = mergedProjects[^1].LastUpdated,
+            Total     = mergedProjects.Count,
             Succeeded = created + updated,
             Failed    = failed
         };

@@ -41,7 +41,7 @@ public interface ISyncStateService
     Task<IReadOnlyList<RetryCompanyEntry>> GetRetryCompaniesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Overwrites the <c>projects</c> attribute on the <c>Retry</c> record with projects that timed out this run.
+    /// Overwrites the <c>projects</c> attribute on the <c>RetryProjects</c> record with projects that timed out this run.
     /// Pass an empty list to clear after a clean run.
     /// </summary>
     Task SaveRetryProjectsAsync(IReadOnlyList<RetryProjectEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);

@@ -28,11 +28,17 @@ public sealed class ConnectWiseService(
     public Task<IReadOnlyList<ConnectWiseCompany>> GetCompaniesSinceAsync(DateTime since, CancellationToken cancellationToken = default)
         => _companies.GetCompaniesSinceAsync(since, cancellationToken);
 
+    public Task<IReadOnlyList<ConnectWiseCompany>> GetCompaniesByIdsAsync(IReadOnlyList<int> companyIds, CancellationToken cancellationToken = default)
+        => _companies.GetCompaniesByIdsAsync(companyIds, cancellationToken);
+
     public Task<IReadOnlyList<ConnectWiseProject>> GetAllProjectsAsync(CancellationToken cancellationToken = default)
         => _projects.GetAllProjectsAsync(cancellationToken);
 
     public Task<IReadOnlyList<ConnectWiseProject>> GetProjectsSinceAsync(DateTime since, CancellationToken cancellationToken = default)
         => _projects.GetProjectsSinceAsync(since, cancellationToken);
+
+    public Task<IReadOnlyList<ConnectWiseProject>> GetProjectsByIdsAsync(IReadOnlyList<int> projectIds, CancellationToken cancellationToken = default)
+        => _projects.GetProjectsByIdsAsync(projectIds, cancellationToken);
 
     public Task<IReadOnlyList<ConnectWiseProjectStatus>> GetAllProjectStatusesAsync(CancellationToken cancellationToken = default)
         => _projects.GetAllProjectStatusesAsync(cancellationToken);

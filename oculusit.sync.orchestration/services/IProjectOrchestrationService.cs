@@ -21,7 +21,8 @@ public interface IProjectOrchestrationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Incremental sync — fetches only projects updated since <paramref name="projectSyncState"/>.LastUpdatedAt.
+    /// Incremental sync — fetches projects updated since <paramref name="projectSyncState"/>.LastUpdatedAt,
+    /// merges with retry projects from RetryProjects sync state, and processes unique project IDs.
     /// <paramref name="companySyncState"/> is used to resolve the Keka client ID.
     /// <paramref name="projectStatusSyncState"/> provides the project status mapping from DynamoDB.
     /// Returns newly created entries and any failures.
@@ -29,7 +30,8 @@ public interface IProjectOrchestrationService
     Task<ProjectSyncResult> SyncProjectsIncrementalAsync(
         SyncState projectSyncState,
         SyncState companySyncState,
-        SyncState? projectStatusSyncState,
+        SyncState? metadataSyncState,
+        IReadOnlyList<string> retryProjectIds,
         CancellationToken cancellationToken = default);
 }
 

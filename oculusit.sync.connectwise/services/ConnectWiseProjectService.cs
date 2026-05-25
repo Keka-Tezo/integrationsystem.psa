@@ -54,6 +54,35 @@ public sealed class ConnectWiseProjectService(
         return results;
     }
 
+    public async Task<IReadOnlyList<ConnectWiseProject>> GetProjectsByIdsAsync(
+        IReadOnlyList<int> projectIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (projectIds.Count == 0)
+            return [];
+
+        var ids = projectIds
+            .Distinct()
+            .OrderBy(id => id)
+            .ToList();
+
+        var condition = string.Join(" OR ", ids.Select(id => $"id = {id}"));
+
+        logger.LogInformation("Fetching {Count} specific ConnectWise projects by id list.", ids.Count);
+
+        var results = await FetchPagedAsync<ConnectWiseProject>(
+            relativeUrlBase: "/project/projects",
+            fields: Fields,
+            orderBy: "id asc",
+            conditions: condition,
+            pageSize: Config.PageSize,
+            cancellationToken: cancellationToken);
+
+        logger.LogInformation("Fetched {Count} ConnectWise projects by id list.", results.Count);
+
+        return results;
+    }
+
     public async Task<IReadOnlyList<ConnectWiseProjectStatus>> GetAllProjectStatusesAsync(
         CancellationToken cancellationToken = default)
     {
