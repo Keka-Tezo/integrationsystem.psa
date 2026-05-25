@@ -172,8 +172,7 @@ public sealed class DynamoDbSyncStateService(
             InitialCompanies      = initialCompanies,
             Projects              = projects,
             InitialProjects       = initialProjects,
-            ProjectStatuses       = ReadProjectStatuses(response.Item),
-            FailedProjectStatuses = ReadFailedProjectStatus(response.Item)
+            ProjectStatuses       = ReadProjectStatuses(response.Item)
         };
     }
 
@@ -783,14 +782,5 @@ public sealed class DynamoDbSyncStateService(
         }
 
         return Task.FromResult<IReadOnlyList<FailedProjectEntry>>(failed);
-    }
-
-    private static FailedProjectStatusEntry? ReadFailedProjectStatus(Dictionary<string, AttributeValue> item)
-    {
-        if (!item.TryGetValue(FailedProjectStatusesAttribute, out var attr) || attr.M is null)
-            return null;
-
-        attr.M.TryGetValue(ErrorMessageAttribute, out var errAttr);
-        return new FailedProjectStatusEntry { ErrorMessage = errAttr?.S ?? string.Empty };
     }
 }
