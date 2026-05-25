@@ -30,7 +30,8 @@ public sealed partial class Worker(
                 await SyncMetadataAsync(syncStartedAt, stoppingToken);
                 var retryCompanyIds = await GetRetryCompanyIdsFromSyncStateAsync(stoppingToken);
                 await SyncCompaniesAsync(syncStartedAt, retryCompanyIds, stoppingToken);
-                await SyncProjectsAsync(syncStartedAt, stoppingToken);
+                var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
+                await SyncProjectsAsync(syncStartedAt, retryProjectIds, stoppingToken);
                 await SyncTimeEntriesSmokeAsync(stoppingToken);                
             }
             else

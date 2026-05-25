@@ -167,7 +167,7 @@ public sealed class FailedCompanyEntry
 
 /// <summary>
 /// Records a ConnectWise company that timed out during sync.
-/// Stored under the <c>Retry</c> syncType so it can be retried on the next run.
+/// Stored under the <c>RetryCompanies</c> syncType so it can be retried on the next run.
 /// </summary>
 public sealed class RetryCompanyEntry
 {
@@ -183,7 +183,7 @@ public sealed class RetryCompanyEntry
 
 /// <summary>
 /// Records a ConnectWise project that timed out during sync.
-/// Stored under the <c>Retry</c> syncType so it can be retried on the next run.
+/// Stored under the <c>RetryProjects</c> syncType so it can be retried on the next run.
 /// </summary>
 public sealed class RetryProjectEntry
 {

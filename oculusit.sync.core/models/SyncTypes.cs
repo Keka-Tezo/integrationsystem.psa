@@ -19,5 +19,5 @@ public static class SyncTypes
     public const string RetryCompanies = "RetryCompanies";
 
     /// <summary>Dedicated record for project transient timeout failures that should be retried on the next run.</summary>
-    public const string Retry = "Retry";
+    public const string RetryProjects = "RetryProjects";
 }

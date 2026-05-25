@@ -27,7 +27,10 @@ public sealed partial class Worker
             initialSnapshot.Count);
     }
 
-    private async Task SyncProjectsAsync(DateTime syncStartedAt, CancellationToken stoppingToken)
+    private async Task SyncProjectsAsync(
+        DateTime syncStartedAt,
+        IReadOnlyList<string> retryProjectIds,
+        CancellationToken stoppingToken)
     {
         // Company sync state is required to resolve Keka client IDs from ConnectWise company IDs.
         var companySyncState = await syncStateService.GetAsync(SyncTypes.Company, stoppingToken);
@@ -75,7 +78,7 @@ public sealed partial class Worker
         {
             logger.LogInformation("Incremental project sync. Last sync was at {LastUpdatedAt}.", projectSyncState.LastUpdatedAt);
 
-            var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, metadataSyncState, stoppingToken);
+            var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, metadataSyncState, retryProjectIds, stoppingToken);
             var lastUpdatedAt  = result.LastRecordUpdatedAt ?? syncStartedAt;
 
             await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
@@ -96,5 +99,19 @@ public sealed partial class Worker
                 "Incremental project sync complete. Total: {Total}, Succeeded: {Succeeded}, Failed: {Failed}. LastRecordUpdatedAt: {LastRecordUpdatedAt}.",
                 result.Total, result.Succeeded, result.Failed, lastUpdatedAt);
         }
+    }
+
+    private async Task<IReadOnlyList<string>> GetRetryProjectIdsFromSyncStateAsync(CancellationToken stoppingToken)
+    {
+        var retryProjectsSyncState = await syncStateService.GetAsync(SyncTypes.RetryProjects, stoppingToken);
+
+        var candidateProjectIds = retryProjectsSyncState?.Projects
+            .Where(e => !string.IsNullOrWhiteSpace(e.Id))
+            .Select(e => e.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+
+        logger.LogInformation("Found {Count} retry projects in RetryProjects SyncState.", candidateProjectIds.Count);
+        return candidateProjectIds;
     }
 }

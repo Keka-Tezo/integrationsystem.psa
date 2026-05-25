@@ -648,7 +648,7 @@ public sealed class DynamoDbSyncStateService(
         DateTime lastUpdatedAt,
         CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Saving {Count} retry project entries to DynamoDB (syncType={SyncType}).", retryEntries.Count, SyncTypes.Retry);
+        logger.LogDebug("Saving {Count} retry project entries to DynamoDB (syncType={SyncType}).", retryEntries.Count, SyncTypes.RetryProjects);
 
         var items = retryEntries.Select(p => new AttributeValue
         {
@@ -665,7 +665,7 @@ public sealed class DynamoDbSyncStateService(
             TableName = _tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.Retry }
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.RetryProjects }
             },
             UpdateExpression = "SET #projects = :projects, #lastUpdatedAt = :lastUpdatedAt",
             ExpressionAttributeNames = new Dictionary<string, string>
@@ -682,7 +682,7 @@ public sealed class DynamoDbSyncStateService(
 
         await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
 
-        logger.LogInformation("Saved {Count} retry project entries to Retry record, lastUpdatedAt={LastUpdatedAt}.",
+        logger.LogInformation("Saved {Count} retry project entries to RetryProjects record, lastUpdatedAt={LastUpdatedAt}.",
             retryEntries.Count, lastUpdatedAt);
     }
 
