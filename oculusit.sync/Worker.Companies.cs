@@ -87,7 +87,6 @@ public sealed partial class Worker
     private async Task<IReadOnlyList<FailedCompanyEntry>> GetAllFailedCompaniesAsync(
         IReadOnlyList<SyncedCompanyEntry> syncedEntries,
         IReadOnlyList<FailedCompanyEntry> failedEntries,
-        IReadOnlyList<RetryCompanyEntry> retryEntries,
         CancellationToken stoppingToken)
     {
         var failedState = await syncStateService.GetAsync(SyncTypes.FailedCompanies, stoppingToken);
@@ -146,7 +145,7 @@ public sealed partial class Worker
             }, stoppingToken);
         }
 
-        var failedCompanies = await GetAllFailedCompaniesAsync(result.SyncedEntries, result.FailedEntries, result.RetryEntries, stoppingToken);
+        var failedCompanies = await GetAllFailedCompaniesAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
 
         await syncStateService.SaveFailedCompaniesAsync(failedCompanies, lastUpdatedAt, stoppingToken);
         await syncStateService.SaveRetryCompaniesAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);

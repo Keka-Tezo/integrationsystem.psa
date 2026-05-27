@@ -30,7 +30,6 @@ public sealed partial class Worker
     private async Task<IReadOnlyList<FailedProjectEntry>> GetAllFailedProjectsAsync(
         IReadOnlyList<SyncedProjectEntry> syncedEntries,
         IReadOnlyList<FailedProjectEntry> failedEntries,
-        IReadOnlyList<RetryProjectEntry> retryEntries,
         CancellationToken stoppingToken)
     {
         var failedState = await syncStateService.GetAsync(SyncTypes.FailedProjects, stoppingToken);
@@ -122,7 +121,7 @@ public sealed partial class Worker
 
             await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
 
-            var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, result.RetryEntries, stoppingToken);
+            var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
             await syncStateService.SaveFailedProjectsAsync(failedProjects, lastUpdatedAt, stoppingToken);
             await syncStateService.SaveRetryProjectsAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);
 
