@@ -23,6 +23,9 @@ public sealed class SyncState
     /// </summary>
     public IReadOnlyList<InitialProjectEntry> InitialProjects { get; init; } = [];
 
+    /// <summary>Projects that failed to sync during the most recent run.</summary>
+    public IReadOnlyList<FailedProjectEntry> FailedProjects { get; init; } = [];
+
     /// <summary>Companies that failed to sync during the most recent run.</summary>
     public IReadOnlyList<FailedCompanyEntry> FailedCompanies { get; init; } = [];
 

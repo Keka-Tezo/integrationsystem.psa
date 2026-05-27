@@ -92,6 +92,28 @@ public sealed class DynamoDbSyncStateService(
             }
         }
 
+        var failedProjects = new List<FailedProjectEntry>();
+        if (response.Item.TryGetValue(FailedProjectsAttribute, out var failedProjectsAttr) && failedProjectsAttr.L is { Count: > 0 })
+        {
+            foreach (var entry in failedProjectsAttr.L)
+            {
+                if (entry.M is null) continue;
+                entry.M.TryGetValue(IdAttribute, out var idAttr);
+                entry.M.TryGetValue(NameAttribute, out var nameAttr);
+                entry.M.TryGetValue(ErrorMessageAttribute, out var errorAttr);
+
+                if (string.IsNullOrWhiteSpace(idAttr?.S))
+                    continue;
+
+                failedProjects.Add(new FailedProjectEntry
+                {
+                    Id = idAttr.S,
+                    Name = nameAttr?.S ?? string.Empty,
+                    ErrorMessage = errorAttr?.S ?? string.Empty
+                });
+            }
+        }
+
         var failedCompanies = new List<FailedCompanyEntry>();
         if (response.Item.TryGetValue(FailedCompaniesAttribute, out var failedCompaniesAttr) && failedCompaniesAttr.L is { Count: > 0 })
         {
@@ -196,6 +218,7 @@ public sealed class DynamoDbSyncStateService(
             InitialCompanies      = initialCompanies,
             Projects              = projects,
             InitialProjects       = initialProjects,
+            FailedProjects        = failedProjects,
             FailedCompanies       = failedCompanies,
             ProjectStatuses       = ReadProjectStatuses(response.Item)
         };
@@ -867,30 +890,5 @@ public sealed class DynamoDbSyncStateService(
         }
 
         return statuses;
-    }
-
-    private static Task<IReadOnlyList<FailedProjectEntry>> ReadFailedProjectsAsync(
-        Dictionary<string, AttributeValue> item)
-    {
-        var failed = new List<FailedProjectEntry>();
-
-        if (item.TryGetValue(FailedProjectsAttribute, out var attr) && attr.L is { Count: > 0 })
-        {
-            foreach (var entry in attr.L)
-            {
-                if (entry.M is null) continue;
-                entry.M.TryGetValue(IdAttribute, out var idAttr);
-                entry.M.TryGetValue(NameAttribute, out var nameAttr);
-                entry.M.TryGetValue(ErrorMessageAttribute, out var errAttr);
-                failed.Add(new FailedProjectEntry
-                {
-                    Id           = idAttr?.S ?? string.Empty,
-                    Name         = nameAttr?.S ?? string.Empty,
-                    ErrorMessage = errAttr?.S ?? string.Empty
-                });
-            }
-        }
-
-        return Task.FromResult<IReadOnlyList<FailedProjectEntry>>(failed);
     }
 }

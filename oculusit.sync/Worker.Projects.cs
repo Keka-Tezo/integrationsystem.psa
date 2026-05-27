@@ -27,6 +27,41 @@ public sealed partial class Worker
             initialSnapshot.Count);
     }
 
+    private async Task<IReadOnlyList<FailedProjectEntry>> GetAllFailedProjectsAsync(
+        IReadOnlyList<SyncedProjectEntry> syncedEntries,
+        IReadOnlyList<FailedProjectEntry> failedEntries,
+        CancellationToken stoppingToken)
+    {
+        var failedState = await syncStateService.GetAsync(SyncTypes.FailedProjects, stoppingToken);
+        var failedProjectsFromDb = failedState?.FailedProjects ?? [];
+
+        var failedProjects = new List<FailedProjectEntry>();
+
+        foreach (var dbFailedProject in failedProjectsFromDb)
+        {
+            if (string.IsNullOrWhiteSpace(dbFailedProject.Id))
+                continue;
+
+            var existsInSyncedEntries = syncedEntries.Any(e =>
+                !string.IsNullOrWhiteSpace(e.Id)
+                && string.Equals(e.Id, dbFailedProject.Id, StringComparison.OrdinalIgnoreCase));
+
+            var existsInFailedEntries = failedEntries.Any(e =>
+                !string.IsNullOrWhiteSpace(e.Id)
+                && string.Equals(e.Id, dbFailedProject.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (existsInSyncedEntries || existsInFailedEntries)
+                continue;
+
+            failedProjects.Add(dbFailedProject);
+        }
+
+        foreach (var failedEntry in failedEntries)
+            failedProjects.Add(failedEntry);
+
+        return failedProjects;
+    }
+
     private async Task SyncProjectsAsync(
         DateTime syncStartedAt,
         IReadOnlyList<string> retryProjectIds,
@@ -83,8 +118,8 @@ public sealed partial class Worker
 
             await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
 
-            // Always overwrite failed projects so stale failures from previous runs are cleared.
-            await syncStateService.SaveFailedProjectsAsync(result.FailedEntries, lastUpdatedAt, stoppingToken);
+            var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
+            await syncStateService.SaveFailedProjectsAsync(failedProjects, lastUpdatedAt, stoppingToken);
             await syncStateService.SaveRetryProjectsAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);
 
             await syncStateService.SaveProjectSummaryAsync(
