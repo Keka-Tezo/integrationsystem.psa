@@ -92,6 +92,9 @@ public sealed partial class Worker
         var failedState = await syncStateService.GetAsync(SyncTypes.FailedCompanies, stoppingToken);
         var failedCompaniesFromDb = failedState?.FailedCompanies ?? [];
 
+        if (failedCompaniesFromDb.Count == 0)
+            return failedEntries;
+
         var failedCompanies = new List<FailedCompanyEntry>();
 
         foreach (var dbFailedCompany in failedCompaniesFromDb)
@@ -146,7 +149,6 @@ public sealed partial class Worker
 
         await syncStateService.SaveFailedCompaniesAsync(failedCompanies, lastUpdatedAt, stoppingToken);
         await syncStateService.SaveRetryCompaniesAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);
-        await syncStateService.SaveDefaultProjectRetriesAsync(result.DefaultProjectRetryEntries, lastUpdatedAt, stoppingToken);
 
         if (saveSummary)
         {

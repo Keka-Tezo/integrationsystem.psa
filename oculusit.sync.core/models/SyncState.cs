@@ -23,6 +23,9 @@ public sealed class SyncState
     /// </summary>
     public IReadOnlyList<InitialProjectEntry> InitialProjects { get; init; } = [];
 
+    /// <summary>Projects that failed to sync during the most recent run.</summary>
+    public IReadOnlyList<FailedProjectEntry> FailedProjects { get; init; } = [];
+
     /// <summary>Companies that failed to sync during the most recent run.</summary>
     public IReadOnlyList<FailedCompanyEntry> FailedCompanies { get; init; } = [];
 
@@ -192,22 +195,6 @@ public sealed class RetryProjectEntry
 
     /// <summary>ConnectWise project name.</summary>
     public string Name { get; init; } = string.Empty;
-
-    /// <summary>Timeout message captured from the exception.</summary>
-    public string ErrorMessage { get; init; } = string.Empty;
-}
-
-/// <summary>
-/// Records a default-project creation timeout so it can be retried in a later run.
-/// Stored under the <c>DefaultProjectRetry</c> syncType.
-/// </summary>
-public sealed class DefaultProjectRetryEntry
-{
-    /// <summary>ConnectWise company ID.</summary>
-    public string CompanyId { get; init; } = string.Empty;
-
-    /// <summary>Keka client ID.</summary>
-    public string ClientId { get; init; } = string.Empty;
 
     /// <summary>Timeout message captured from the exception.</summary>
     public string ErrorMessage { get; init; } = string.Empty;

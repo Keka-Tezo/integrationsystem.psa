@@ -10,7 +10,6 @@ public static class SyncTypes
     public const string Project        = "Project";
     public const string InitialProject = "InitialProject";
     public const string ProjectStatus  = "ProjectStatus";
-    public const string DefaultProjectRetry = "DefaultProjectRetry";
 
     /// <summary>Dedicated record that logs all company sync failures with id, name, and error message.</summary>
     public const string FailedCompanies = "FailedCompanies";

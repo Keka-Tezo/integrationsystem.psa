@@ -30,7 +30,6 @@ public sealed class DynamoDbSyncStateService(
     private const string ClientNameAttribute       = "clientName";
     private const string CompanyCodeAttribute      = "companyCode";
     private const string LegacyNameAttribute       = "name";
-    private const string DefaultProjectRetryAttribute = "defaultProjectRetry";
     private const string ProjectIdAttribute        = "projectId";
     private const string ProjectNameAttribute      = "projectName";
     private const string ClientIdAttribute         = "clientId";
@@ -88,6 +87,28 @@ public sealed class DynamoDbSyncStateService(
                 {
                     Id       = idAttr?.S ?? string.Empty,
                     ClientId = clientIdAttr?.S ?? string.Empty
+                });
+            }
+        }
+
+        var failedProjects = new List<FailedProjectEntry>();
+        if (response.Item.TryGetValue(FailedProjectsAttribute, out var failedProjectsAttr) && failedProjectsAttr.L is { Count: > 0 })
+        {
+            foreach (var entry in failedProjectsAttr.L)
+            {
+                if (entry.M is null) continue;
+                entry.M.TryGetValue(IdAttribute, out var idAttr);
+                entry.M.TryGetValue(NameAttribute, out var nameAttr);
+                entry.M.TryGetValue(ErrorMessageAttribute, out var errorAttr);
+
+                if (string.IsNullOrWhiteSpace(idAttr?.S))
+                    continue;
+
+                failedProjects.Add(new FailedProjectEntry
+                {
+                    Id = idAttr.S,
+                    Name = nameAttr?.S ?? string.Empty,
+                    ErrorMessage = errorAttr?.S ?? string.Empty
                 });
             }
         }
@@ -196,6 +217,7 @@ public sealed class DynamoDbSyncStateService(
             InitialCompanies      = initialCompanies,
             Projects              = projects,
             InitialProjects       = initialProjects,
+            FailedProjects        = failedProjects,
             FailedCompanies       = failedCompanies,
             ProjectStatuses       = ReadProjectStatuses(response.Item)
         };
@@ -709,49 +731,6 @@ public sealed class DynamoDbSyncStateService(
             retryEntries.Count, lastUpdatedAt);
     }
 
-    public async Task SaveDefaultProjectRetriesAsync(
-        IReadOnlyList<DefaultProjectRetryEntry> retryEntries,
-        DateTime lastUpdatedAt,
-        CancellationToken cancellationToken = default)
-    {
-        logger.LogDebug("Saving {Count} default-project retry entries to DynamoDB (syncType={SyncType}).", retryEntries.Count, SyncTypes.DefaultProjectRetry);
-
-        var items = retryEntries.Select(r => new AttributeValue
-        {
-            M = new Dictionary<string, AttributeValue>
-            {
-                [CompanyIdAttribute]    = new AttributeValue { S = r.CompanyId },
-                [ClientIdAttribute]     = new AttributeValue { S = r.ClientId },
-                [ErrorMessageAttribute] = new AttributeValue { S = r.ErrorMessage }
-            }
-        }).ToList();
-
-        var updateRequest = new UpdateItemRequest
-        {
-            TableName = _tableName,
-            Key = new Dictionary<string, AttributeValue>
-            {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.DefaultProjectRetry }
-            },
-            UpdateExpression = "SET #defaultProjectRetry = :items, #lastUpdatedAt = :lastUpdatedAt",
-            ExpressionAttributeNames = new Dictionary<string, string>
-            {
-                ["#defaultProjectRetry"] = DefaultProjectRetryAttribute,
-                ["#lastUpdatedAt"]       = LastUpdatedAtAttribute
-            },
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":items"]        = new AttributeValue { L = items },
-                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
-            }
-        };
-
-        await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
-
-        logger.LogInformation("Saved {Count} default-project retry entries, lastUpdatedAt={LastUpdatedAt}.",
-            retryEntries.Count, lastUpdatedAt);
-    }
-
     public async Task SaveProjectStatusAsync(
         IReadOnlyList<ProjectStatusEntry> entries,
         DateTime lastUpdatedAt,
@@ -867,30 +846,5 @@ public sealed class DynamoDbSyncStateService(
         }
 
         return statuses;
-    }
-
-    private static Task<IReadOnlyList<FailedProjectEntry>> ReadFailedProjectsAsync(
-        Dictionary<string, AttributeValue> item)
-    {
-        var failed = new List<FailedProjectEntry>();
-
-        if (item.TryGetValue(FailedProjectsAttribute, out var attr) && attr.L is { Count: > 0 })
-        {
-            foreach (var entry in attr.L)
-            {
-                if (entry.M is null) continue;
-                entry.M.TryGetValue(IdAttribute, out var idAttr);
-                entry.M.TryGetValue(NameAttribute, out var nameAttr);
-                entry.M.TryGetValue(ErrorMessageAttribute, out var errAttr);
-                failed.Add(new FailedProjectEntry
-                {
-                    Id           = idAttr?.S ?? string.Empty,
-                    Name         = nameAttr?.S ?? string.Empty,
-                    ErrorMessage = errAttr?.S ?? string.Empty
-                });
-            }
-        }
-
-        return Task.FromResult<IReadOnlyList<FailedProjectEntry>>(failed);
     }
 }
