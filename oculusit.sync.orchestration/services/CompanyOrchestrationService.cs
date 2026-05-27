@@ -193,7 +193,6 @@ public sealed class CompanyOrchestrationService(
         var syncedEntries = new List<SyncedCompanyEntry>();
         var failedEntries = new List<FailedCompanyEntry>();
         var retryEntries = new List<RetryCompanyEntry>();
-        var defaultProjectRetryEntries = new List<DefaultProjectRetryEntry>();
 
         foreach (var company in companies)
         {
@@ -220,10 +219,10 @@ public sealed class CompanyOrchestrationService(
                         logger.LogWarning(tex,
                             "{SyncLabel}: Timeout creating default project for ConnectWise company {CompanyId} and Keka client {ClientId}.",
                             syncLabel, company.Id, kekaClientId);
-                        defaultProjectRetryEntries.Add(new DefaultProjectRetryEntry
+                        retryEntries.Add(new RetryCompanyEntry
                         {
-                            CompanyId = companyId,
-                            ClientId = kekaClientId,
+                            Id = companyId,
+                            Name = company.Name ?? string.Empty,
                             ErrorMessage = tex.Message
                         });
                     }
@@ -253,10 +252,10 @@ public sealed class CompanyOrchestrationService(
                         logger.LogWarning(tex,
                             "{SyncLabel}: Timeout creating default project for ConnectWise company {CompanyId} and Keka client {ClientId}.",
                             syncLabel, company.Id, kekaClientId);
-                        defaultProjectRetryEntries.Add(new DefaultProjectRetryEntry
+                        retryEntries.Add(new RetryCompanyEntry
                         {
-                            CompanyId = companyId,
-                            ClientId = kekaClientId,
+                            Id = companyId,
+                            Name = company.Name ?? string.Empty,
                             ErrorMessage = tex.Message
                         });
                     }
@@ -310,7 +309,6 @@ public sealed class CompanyOrchestrationService(
             SyncedEntries = syncedEntries,
             FailedEntries = failedEntries,
             RetryEntries = retryEntries,
-            DefaultProjectRetryEntries = defaultProjectRetryEntries,
             LastRecordUpdatedAt = companies[^1].LastUpdated,
             Total = companies.Count,
             Succeeded = created + updated,

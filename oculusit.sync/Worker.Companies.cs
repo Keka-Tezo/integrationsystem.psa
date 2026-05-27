@@ -87,10 +87,14 @@ public sealed partial class Worker
     private async Task<IReadOnlyList<FailedCompanyEntry>> GetAllFailedCompaniesAsync(
         IReadOnlyList<SyncedCompanyEntry> syncedEntries,
         IReadOnlyList<FailedCompanyEntry> failedEntries,
+        IReadOnlyList<RetryCompanyEntry> retryEntries,
         CancellationToken stoppingToken)
     {
         var failedState = await syncStateService.GetAsync(SyncTypes.FailedCompanies, stoppingToken);
         var failedCompaniesFromDb = failedState?.FailedCompanies ?? [];
+
+        if (failedCompaniesFromDb.Count == 0)
+            return failedEntries;
 
         var failedCompanies = new List<FailedCompanyEntry>();
 
@@ -109,7 +113,12 @@ public sealed partial class Worker
                 && string.Equals(e.Id, dbFailedCompany.Id, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            //If failedCompanies id doesnot exist in syncedEntries and failedEntries then that failed company is added to failed company list
+            if (retryEntries.Any(e =>
+                !string.IsNullOrWhiteSpace(e.Id)
+                && string.Equals(e.Id, dbFailedCompany.Id, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            //If failedCompanies id doesnot exist in syncedEntries and failedEntries and retryEntries then that failed company is added to failed company list
             failedCompanies.Add(dbFailedCompany);
         }
 
@@ -142,11 +151,10 @@ public sealed partial class Worker
             }, stoppingToken);
         }
 
-        var failedCompanies = await GetAllFailedCompaniesAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
+        var failedCompanies = await GetAllFailedCompaniesAsync(result.SyncedEntries, result.FailedEntries, result.RetryEntries, stoppingToken);
 
         await syncStateService.SaveFailedCompaniesAsync(failedCompanies, lastUpdatedAt, stoppingToken);
         await syncStateService.SaveRetryCompaniesAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);
-        await syncStateService.SaveDefaultProjectRetriesAsync(result.DefaultProjectRetryEntries, lastUpdatedAt, stoppingToken);
 
         if (saveSummary)
         {

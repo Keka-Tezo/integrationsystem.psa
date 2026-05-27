@@ -47,11 +47,6 @@ public interface ISyncStateService
     Task SaveRetryProjectsAsync(IReadOnlyList<RetryProjectEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Overwrites the <c>companies</c> attribute on the <c>DefaultProjectRetry</c> record with default-project timeout references.
-    /// </summary>
-    Task SaveDefaultProjectRetriesAsync(IReadOnlyList<DefaultProjectRetryEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Overwrites the <c>summary</c> attribute on the <c>Company</c> record with the latest run counts.
     /// </summary>
     Task SaveCompanySummaryAsync(CompanySyncSummary summary, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);

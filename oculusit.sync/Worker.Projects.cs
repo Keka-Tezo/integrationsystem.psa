@@ -30,6 +30,7 @@ public sealed partial class Worker
     private async Task<IReadOnlyList<FailedProjectEntry>> GetAllFailedProjectsAsync(
         IReadOnlyList<SyncedProjectEntry> syncedEntries,
         IReadOnlyList<FailedProjectEntry> failedEntries,
+        IReadOnlyList<RetryProjectEntry> retryEntries,
         CancellationToken stoppingToken)
     {
         var failedState = await syncStateService.GetAsync(SyncTypes.FailedProjects, stoppingToken);
@@ -50,7 +51,11 @@ public sealed partial class Worker
                 !string.IsNullOrWhiteSpace(e.Id)
                 && string.Equals(e.Id, dbFailedProject.Id, StringComparison.OrdinalIgnoreCase));
 
-            if (existsInSyncedEntries || existsInFailedEntries)
+            var existsInRetryEntries = retryEntries.Any(e =>
+                !string.IsNullOrWhiteSpace(e.Id)
+                && string.Equals(e.Id, dbFailedProject.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (existsInSyncedEntries || existsInFailedEntries || existsInRetryEntries)
                 continue;
 
             failedProjects.Add(dbFailedProject);
@@ -118,7 +123,7 @@ public sealed partial class Worker
 
             await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
 
-            var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
+            var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, result.RetryEntries, stoppingToken);
             await syncStateService.SaveFailedProjectsAsync(failedProjects, lastUpdatedAt, stoppingToken);
             await syncStateService.SaveRetryProjectsAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);
 

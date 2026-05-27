@@ -37,12 +37,6 @@ public sealed class CompanySyncResult
     public IReadOnlyList<RetryCompanyEntry> RetryEntries { get; init; } = [];
 
     /// <summary>
-    /// Default project creation timeout records keyed by company/client.
-    /// Persisted under syncType DefaultProjectRetry for later retry.
-    /// </summary>
-    public IReadOnlyList<DefaultProjectRetryEntry> DefaultProjectRetryEntries { get; init; } = [];
-
-    /// <summary>
     /// The <c>lastUpdated</c> value of the last record fetched from ConnectWise, ordered ascending.
     /// Used as <c>LastUpdatedAt</c> in DynamoDB so the next incremental run starts exactly from here.
     /// Falls back to the worker's <c>syncStartedAt</c> when no records were fetched.

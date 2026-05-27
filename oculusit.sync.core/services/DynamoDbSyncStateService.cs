@@ -30,7 +30,6 @@ public sealed class DynamoDbSyncStateService(
     private const string ClientNameAttribute       = "clientName";
     private const string CompanyCodeAttribute      = "companyCode";
     private const string LegacyNameAttribute       = "name";
-    private const string DefaultProjectRetryAttribute = "defaultProjectRetry";
     private const string ProjectIdAttribute        = "projectId";
     private const string ProjectNameAttribute      = "projectName";
     private const string ClientIdAttribute         = "clientId";
@@ -729,49 +728,6 @@ public sealed class DynamoDbSyncStateService(
         await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
 
         logger.LogInformation("Saved {Count} retry project entries to RetryProjects record, lastUpdatedAt={LastUpdatedAt}.",
-            retryEntries.Count, lastUpdatedAt);
-    }
-
-    public async Task SaveDefaultProjectRetriesAsync(
-        IReadOnlyList<DefaultProjectRetryEntry> retryEntries,
-        DateTime lastUpdatedAt,
-        CancellationToken cancellationToken = default)
-    {
-        logger.LogDebug("Saving {Count} default-project retry entries to DynamoDB (syncType={SyncType}).", retryEntries.Count, SyncTypes.DefaultProjectRetry);
-
-        var items = retryEntries.Select(r => new AttributeValue
-        {
-            M = new Dictionary<string, AttributeValue>
-            {
-                [CompanyIdAttribute]    = new AttributeValue { S = r.CompanyId },
-                [ClientIdAttribute]     = new AttributeValue { S = r.ClientId },
-                [ErrorMessageAttribute] = new AttributeValue { S = r.ErrorMessage }
-            }
-        }).ToList();
-
-        var updateRequest = new UpdateItemRequest
-        {
-            TableName = _tableName,
-            Key = new Dictionary<string, AttributeValue>
-            {
-                [KeyAttribute] = new AttributeValue { S = SyncTypes.DefaultProjectRetry }
-            },
-            UpdateExpression = "SET #defaultProjectRetry = :items, #lastUpdatedAt = :lastUpdatedAt",
-            ExpressionAttributeNames = new Dictionary<string, string>
-            {
-                ["#defaultProjectRetry"] = DefaultProjectRetryAttribute,
-                ["#lastUpdatedAt"]       = LastUpdatedAtAttribute
-            },
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":items"]        = new AttributeValue { L = items },
-                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
-            }
-        };
-
-        await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
-
-        logger.LogInformation("Saved {Count} default-project retry entries, lastUpdatedAt={LastUpdatedAt}.",
             retryEntries.Count, lastUpdatedAt);
     }
 
