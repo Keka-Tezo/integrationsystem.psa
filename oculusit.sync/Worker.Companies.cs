@@ -112,7 +112,7 @@ public sealed partial class Worker
                 && string.Equals(e.Id, dbFailedCompany.Id, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            //If failedCompanies id doesnot exist in syncedEntries and failedEntries and retryEntries then that failed company is added to failed company list
+            //If failedCompanies id doesnot exist in syncedEntries and failedEntries then that failed company is added to failed company list
             failedCompanies.Add(dbFailedCompany);
         }
 
