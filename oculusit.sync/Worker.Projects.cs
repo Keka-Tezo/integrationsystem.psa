@@ -36,6 +36,9 @@ public sealed partial class Worker
         var failedState = await syncStateService.GetAsync(SyncTypes.FailedProjects, stoppingToken);
         var failedProjectsFromDb = failedState?.FailedProjects ?? [];
 
+        if (failedProjectsFromDb.Count == 0)
+            return failedEntries;
+
         var failedProjects = new List<FailedProjectEntry>();
 
         foreach (var dbFailedProject in failedProjectsFromDb)
