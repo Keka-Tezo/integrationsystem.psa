@@ -2,17 +2,12 @@ using oculusit.sync.connectwise.modules;
 
 namespace oculusit.sync.connectwise.services;
 
-public interface IConnectWiseService
+/// <summary>
+/// Kept for backward compatibility. Prefer injecting feature-specific services directly.
+/// </summary>
+public interface IConnectWiseService :
+    IConnectWiseCompanyService,
+    IConnectWiseProjectService,
+    IConnectWiseTimeEntryService
 {
-    /// <summary>
-    /// Fetches all companies from ConnectWise by paginating through all pages
-    /// and returns the complete list stored in memory.
-    /// </summary>
-    Task<IReadOnlyList<ConnectWiseCompany>> GetAllCompaniesAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Fetches only companies updated at or after <paramref name="since"/> (UTC),
-    /// ordered by lastUpdated ascending.
-    /// </summary>
-    Task<IReadOnlyList<ConnectWiseCompany>> GetCompaniesSinceAsync(DateTime since, CancellationToken cancellationToken = default);
 }

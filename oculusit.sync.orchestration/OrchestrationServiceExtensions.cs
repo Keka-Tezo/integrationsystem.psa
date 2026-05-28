@@ -8,6 +8,8 @@ public static class OrchestrationServiceExtensions
     public static IServiceCollection AddOrchestrationServices(this IServiceCollection services)
     {
         services.AddSingleton<ICompanyOrchestrationService, CompanyOrchestrationService>();
+        services.AddSingleton<IProjectOrchestrationService, ProjectOrchestrationService>();
+        services.AddSingleton<IProjectStatusOrchestrationService, ProjectStatusOrchestrationService>();
         return services;
     }
 }
