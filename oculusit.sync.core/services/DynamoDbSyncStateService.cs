@@ -22,6 +22,8 @@ public sealed class DynamoDbSyncStateService(
     private const string InitialProjectsAttribute  = "initialProjects";
     private const string FailedProjectsAttribute   = "failedProjects";
     private const string FailedCompaniesAttribute  = "failedCompanies";
+    private const string ProjectManagerAttribute   = "projectManager";
+    private const string EmailAttribute            = "email";
     private const string ProjectStatusesAttribute       = "projectStatuses";
     private const string FailedProjectStatusesAttribute = "failedProjectStatuses";
     private const string IdAttribute               = "id";
@@ -75,6 +77,26 @@ public sealed class DynamoDbSyncStateService(
             && DateTime.TryParseExact(tsAttr.S, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
         {
             lastUpdatedAt = parsed;
+        }
+
+        DefaultProjectEntry? defaultProject = null;
+        if (response.Item.TryGetValue(ProjectManagerAttribute, out var projectManagerAttr)
+            && projectManagerAttr.M is { Count: > 0 })
+        {
+            var email = projectManagerAttr.M.TryGetValue(EmailAttribute, out var emailAttr) ? emailAttr.S ?? string.Empty : string.Empty;
+            var name = projectManagerAttr.M.TryGetValue(NameAttribute, out var managerNameAttr) ? managerNameAttr.S ?? string.Empty : string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(email) || !string.IsNullOrWhiteSpace(name))
+            {
+                defaultProject = new DefaultProjectEntry
+                {
+                    ProjectManager = new DefaultProjectManagerEntry
+                    {
+                        Email = email,
+                        Name = name
+                    }
+                };
+            }
         }
 
         var companies = new List<SyncedCompanyEntry>();
@@ -218,6 +240,7 @@ public sealed class DynamoDbSyncStateService(
             Companies             = companies,
             InitialCompanies      = initialCompanies,
             Projects              = projects,
+            DefaultProject        = defaultProject,
             InitialProjects       = initialProjects,
             FailedProjects        = failedProjects,
             FailedCompanies       = failedCompanies,
