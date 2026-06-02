@@ -82,6 +82,8 @@ public sealed class TimeEntryOrchestrationService(
             return false;
         }
 
+        await EnsureProjectAllocationAsync(kekaProject, kekaEmployee, cancellationToken);
+
         var request = new KekaTimesheetEntryBatchRequest
         {
             new()
@@ -177,6 +179,87 @@ public sealed class TimeEntryOrchestrationService(
         }
 
         return defaultProject;
+    }
+
+    private async Task EnsureProjectAllocationAsync(
+        KekaProject kekaProject,
+        KekaEmployee kekaEmployee,
+        CancellationToken cancellationToken)
+    {
+        var allocations = await kekaProjectService.GetProjectAllocationsAsync(kekaProject.Id, cancellationToken);
+
+        var alreadyAllocated = allocations.Any(a =>
+            string.Equals(a.Employee?.Id, kekaEmployee.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (alreadyAllocated)
+        {
+            logger.LogDebug(
+                "Employee {EmployeeId} already has an allocation on Keka project {ProjectId}. Skipping creation.",
+                kekaEmployee.Id,
+                kekaProject.Id);
+            return;
+        }
+
+        // Resolve billing role by matching employee department name to a billing role name.
+        const int DepartmentGroupType = 1;
+        var departmentName = kekaEmployee.Groups
+            .FirstOrDefault(g => g.GroupType == DepartmentGroupType)
+            ?.Title;
+
+        string? billingRoleId = null;
+
+        if (!string.IsNullOrWhiteSpace(departmentName))
+        {
+            var billingRoles = await kekaProjectService.GetAllBillingRolesAsync(cancellationToken);
+            billingRoleId = billingRoles
+                .FirstOrDefault(r => string.Equals(r.Name, departmentName, StringComparison.OrdinalIgnoreCase))
+                ?.Id;
+
+            if (string.IsNullOrWhiteSpace(billingRoleId))
+                logger.LogWarning(
+                    "No Keka billing role found matching department '{Department}' for employee {EmployeeId}.",
+                    departmentName,
+                    kekaEmployee.Id);
+        }
+        else
+        {
+            logger.LogWarning(
+                "Employee {EmployeeId} has no department group (groupType={GroupType}). Billing role will not be set on allocation.",
+                kekaEmployee.Id,
+                DepartmentGroupType);
+        }
+
+        if (string.IsNullOrWhiteSpace(billingRoleId))
+        {
+            logger.LogWarning(
+                "Skipping project allocation creation for employee {EmployeeId} on project {ProjectId} because billing role could not be resolved.",
+                kekaEmployee.Id,
+                kekaProject.Id);
+            return;
+        }
+
+        var startDate = kekaProject.StartDate?.Date ?? DateTime.UtcNow.Date;
+        var endDate = kekaProject.EndDate?.Date;
+
+        var allocationRequest = new KekaProjectAllocationRequest
+        {
+            EmployeeId = kekaEmployee.Id,
+            AllocationPercentage = 100,
+            BillingRoleId = billingRoleId,
+            StartDate = startDate,
+            EndDate = endDate,
+            BillingType = kekaProject.IsBillable
+                ? KekaProjectAllocationBillingType.Billable
+                : KekaProjectAllocationBillingType.NonBillable
+        };
+
+        await kekaProjectService.CreateProjectAllocationAsync(kekaProject.Id, allocationRequest, cancellationToken);
+
+        logger.LogInformation(
+            "Created project allocation for employee {EmployeeId} on Keka project {ProjectId} with billing role {BillingRoleId}.",
+            kekaEmployee.Id,
+            kekaProject.Id,
+            billingRoleId);
     }
 
     private async Task<string?> ResolveOrCreateTaskIdAsync(
