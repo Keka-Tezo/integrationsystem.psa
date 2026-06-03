@@ -113,6 +113,102 @@ public sealed class TimeEntryOrchestrationService(
         return true;
     }
 
+    public async Task<int> LogTimeEntriesBatchAsync(
+        IReadOnlyList<ConnectWiseTimeEntry> entries,
+        string employeeEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (entries is null || entries.Count == 0)
+            return 0;
+
+        if (string.IsNullOrWhiteSpace(employeeEmail))
+        {
+            logger.LogWarning("Skipping batch of {Count} time entries because employee email is empty.", entries.Count);
+            return 0;
+        }
+
+        // Resolve Keka employee once for the entire batch
+        var kekaEmployee = await kekaEmployeeService.SearchEmployeeByEmailAsync(employeeEmail.Trim(), cancellationToken);
+        if (kekaEmployee is null || string.IsNullOrWhiteSpace(kekaEmployee.Id))
+        {
+            logger.LogWarning(
+                "Skipping batch of {Count} time entries because Keka employee was not found for email {Email}.",
+                entries.Count, employeeEmail);
+            return 0;
+        }
+
+        var batchRequest = new KekaTimesheetEntryBatchRequest();
+        var allocatedProjectIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in entries)
+        {
+            if (!TryResolveMinutes(entry, out var minutes) || minutes <= 0)
+            {
+                logger.LogWarning("Skipping time entry {TimeEntryId} in batch — minutes could not be resolved.", entry.Id);
+                continue;
+            }
+
+            var kekaProject = await ResolveKekaProjectAsync(entry, cancellationToken);
+            if (kekaProject is null)
+            {
+                logger.LogWarning("Skipping time entry {TimeEntryId} in batch — Keka project could not be resolved.", entry.Id);
+                continue;
+            }
+
+            var taskName = ResolveTaskName(entry.BillableOption, entry.ChargeToType);
+            if (string.IsNullOrWhiteSpace(taskName))
+            {
+                logger.LogWarning(
+                    "Skipping time entry {TimeEntryId} in batch — chargeToType {ChargeToType} is not supported.",
+                    entry.Id, entry.ChargeToType);
+                continue;
+            }
+
+            var taskId = await ResolveOrCreateTaskIdAsync(kekaProject, taskName, entry.TimeStart, cancellationToken);
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                logger.LogWarning(
+                    "Skipping time entry {TimeEntryId} in batch — task {TaskName} could not be resolved or created.",
+                    entry.Id, taskName);
+                continue;
+            }
+
+            // Ensure allocation once per unique project in this batch
+            if (allocatedProjectIds.Add(kekaProject.Id))
+                await EnsureProjectAllocationAsync(kekaProject, kekaEmployee, cancellationToken);
+
+            var normalizedStart = NormalizeUtc(entry.TimeStart) ?? DateTime.UtcNow;
+            var normalizedEnd   = NormalizeUtc(entry.TimeEnd)   ?? normalizedStart.AddMinutes(minutes);
+
+            batchRequest.Add(new()
+            {
+                ProjectId        = kekaProject.Id,
+                TaskId           = taskId,
+                NumberOfMinutes  = minutes,
+                Date             = normalizedStart.Date,
+                Comment          = string.IsNullOrWhiteSpace(entry.Notes)
+                                       ? $"CW TimeEntry {entry.Id}"
+                                       : $"CW TimeEntry {entry.Id} - {entry.Notes}",
+                StartTime        = ToKekaTimeInt(normalizedStart),
+                EndTime          = ToKekaTimeInt(normalizedEnd)
+            });
+        }
+
+        if (batchRequest.Count == 0)
+        {
+            logger.LogWarning("Batch for employee {Email} resolved to 0 valid entries — nothing posted to Keka.", employeeEmail);
+            return 0;
+        }
+
+        await kekaTimesheetEntryService.CreateTimesheetEntryAsync(kekaEmployee.Id, batchRequest, cancellationToken);
+
+        logger.LogInformation(
+            "Batch posted {BatchCount}/{TotalCount} time entries to Keka for employee {KekaEmployeeId}.",
+            batchRequest.Count, entries.Count, kekaEmployee.Id);
+
+        return batchRequest.Count;
+    }
+
     private async Task<KekaProject?> ResolveKekaProjectAsync(ConnectWiseTimeEntry entry, CancellationToken cancellationToken)
     {
         if (entry.Project is not null && entry.Project.Id > 0)

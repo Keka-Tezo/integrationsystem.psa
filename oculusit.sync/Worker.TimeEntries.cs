@@ -268,17 +268,10 @@ public sealed partial class Worker
                 var timeEntries = await connectWiseTimeEntryService.GetTimeEntriesByTimesheetIdAsync(
                     timesheet.Id, stoppingToken);
 
-                var postedCount = 0;
-                foreach (var entry in timeEntries)
-                {
-                    var posted = await timeEntryOrchestrationService.LogTimeEntryAsync(
-                        entry,
-                        employeeState.Email,
-                        stoppingToken);
-
-                    if (posted)
-                        postedCount++;
-                }
+                var postedCount = await timeEntryOrchestrationService.LogTimeEntriesBatchAsync(
+                    timeEntries,
+                    employeeState.Email,
+                    stoppingToken);
 
                 totalPosted += postedCount;
                 memberNewPeriods++;
@@ -289,7 +282,7 @@ public sealed partial class Worker
                 updatedSyncedPeriods[year].Add(period);
 
                 logger.LogInformation(
-                    "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}): fetched {EntryCount} entries, posted {PostedCount} to Keka.",
+                    "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}): fetched {EntryCount} entries, posted {PostedCount} to Keka in a single batch.",
                     timesheet.Id, memberId, year, period, timeEntries.Count, postedCount);
             }
 
