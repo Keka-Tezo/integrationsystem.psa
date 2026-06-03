@@ -9,6 +9,7 @@ public interface IConnectWiseService :
     IConnectWiseCompanyService,
     IConnectWiseMemberService,
     IConnectWiseProjectService,
-    IConnectWiseTimeEntryService
+    IConnectWiseTimeEntryService,
+    IConnectWiseTimesheetService
 {
 }

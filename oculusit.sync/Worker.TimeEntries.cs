@@ -18,9 +18,10 @@ public sealed partial class Worker
     {
         var runStartedAtUtc = DateTime.UtcNow;
         var previousWeek = GetPreviousWeekBoundsUtc(runStartedAtUtc);
-        var previousWeekDedupeKey = previousWeek.WeekStartUtc.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var previousWeekYear   = ISOWeek.GetYear(previousWeek.WeekStartUtc);
+        var previousWeekPeriod = ISOWeek.GetWeekOfYear(previousWeek.WeekStartUtc);
 
-        var employeesToSync = (await syncStateService.GetTimeEntryEmployeeDedupeStatesToSyncAsync(previousWeekDedupeKey, stoppingToken))
+        var employeesToSync = (await syncStateService.GetTimeEntryEmployeeDedupeStatesToSyncAsync(previousWeekYear, previousWeekPeriod, stoppingToken))
             .Where(state => !string.IsNullOrWhiteSpace(state.EmployeeId))
             .OrderBy(state => state.EmployeeId, StringComparer.Ordinal)
             .ToList();
@@ -28,8 +29,8 @@ public sealed partial class Worker
         if (employeesToSync.Count == 0)
         {
             logger.LogInformation(
-                "All employees are already synced for previous week {PreviousWeekDedupeKey}. Skipping time-entry pull.",
-                previousWeekDedupeKey);
+                "All employees are already synced for previous week {PreviousWeekYear}/{PreviousWeekPeriod}. Skipping time-entry pull.",
+                previousWeekYear, previousWeekPeriod);
             return;
         }
 
@@ -45,22 +46,27 @@ public sealed partial class Worker
                 continue;
             }
 
-            var startWeekUtc = ResolveStartWeekUtc(employee.DedupeKey, previousWeek.WeekStartUtc);
+            var startWeekUtc = ResolveStartWeekUtc(employee.SyncedPeriods, previousWeek.WeekStartUtc);
             var weeksToPull = GetWeeksInRange(startWeekUtc, previousWeek.WeekStartUtc);
             if (weeksToPull.Count == 0)
             {
                 logger.LogInformation(
-                    "No weeks to pull for employee {EmployeeId}. DedupeKey={DedupeKey}, PreviousWeekDedupeKey={PreviousWeekDedupeKey}.",
-                    employee.EmployeeId,
-                    employee.DedupeKey,
-                    previousWeekDedupeKey);
+                    "No weeks to pull for employee {EmployeeId}. Already up to date for {PreviousWeekYear}/{PreviousWeekPeriod}.",
+                    employee.EmployeeId, previousWeekYear, previousWeekPeriod);
                 continue;
             }
 
-            DateTime? latestProcessedWeekStartUtc = null;
+            // Clone existing synced periods — we'll add each processed week to this map
+            var updatedSyncedPeriods = employee.SyncedPeriods
+                .ToDictionary(kvp => kvp.Key, kvp => new HashSet<int>(kvp.Value));
+
+            var periodsProcessed = 0;
 
             foreach (var week in weeksToPull)
             {
+                var weekYear   = ISOWeek.GetYear(week.WeekStartUtc);
+                var weekPeriod = ISOWeek.GetWeekOfYear(week.WeekStartUtc);
+
                 var weekEntries = await connectWiseTimeEntryService.GetTimeEntriesForDayAsync(
                     DateOnly.FromDateTime(week.WeekStartUtc),
                     memberIds: [employeeId],
@@ -94,44 +100,241 @@ public sealed partial class Worker
                 totalWeeksPulled++;
                 totalEntriesPulled += employeeEntries.Count;
                 totalEntriesLoggedToKeka += postedCount;
-                latestProcessedWeekStartUtc = week.WeekStartUtc;
+                periodsProcessed++;
+
+                // Mark this period as synced
+                if (!updatedSyncedPeriods.ContainsKey(weekYear))
+                    updatedSyncedPeriods[weekYear] = [];
+                updatedSyncedPeriods[weekYear].Add(weekPeriod);
 
                 logger.LogInformation(
-                    "Pulled {EntryCount} and posted {PostedCount} time entries for employee {EmployeeId} in week {WeekStart:yyyy-MM-dd} to {WeekEnd:yyyy-MM-dd} (LastUpdatedAt={LastUpdatedAt:o}).",
+                    "Pulled {EntryCount} and posted {PostedCount} time entries for employee {EmployeeId} in week {WeekStart:yyyy-MM-dd} to {WeekEnd:yyyy-MM-dd} (Period={Year}/{Period}).",
                     employeeEntries.Count,
                     postedCount,
                     employee.EmployeeId,
                     week.WeekStartUtc,
                     week.WeekEndUtc,
-                    employee.LastUpdatedAt);
+                    weekYear,
+                    weekPeriod);
             }
 
-            if (latestProcessedWeekStartUtc.HasValue)
+            if (periodsProcessed > 0)
             {
-                var latestDedupeKey = latestProcessedWeekStartUtc.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
                 await syncStateService.UpsertTimeEntryEmployeeDedupeStateAsync(new TimeEntryEmployeeDedupeState
                 {
-                    EmployeeId = employee.EmployeeId,
-                    Email = employee.Email,
-                    DedupeKey = latestDedupeKey,
-                    LastUpdatedAt = employee.LastUpdatedAt
+                    EmployeeId    = employee.EmployeeId,
+                    Email         = employee.Email,
+                    SyncedPeriods = updatedSyncedPeriods
                 }, stoppingToken);
 
                 logger.LogInformation(
-                    "Processed employee {EmployeeId} through week {DedupeKey}. Employee checkpoint updated.",
+                    "Employee {EmployeeId} checkpoint updated. ProcessedPeriods={ProcessedPeriods}, TotalSyncedPeriods={TotalSyncedPeriods}.",
                     employee.EmployeeId,
-                    latestDedupeKey);
+                    periodsProcessed,
+                    updatedSyncedPeriods.Values.Sum(s => s.Count));
             }
         }
 
         logger.LogInformation(
-            "Time-entry pull complete. EmployeesToSync={EmployeesToSync}, TotalWeeksPulled={TotalWeeksPulled}, TotalEntriesPulled={TotalEntriesPulled}, TotalEntriesLoggedToKeka={TotalEntriesLoggedToKeka}, PreviousWeekStart={PreviousWeekStart:yyyy-MM-dd}, PreviousWeekEnd={PreviousWeekEnd:yyyy-MM-dd}.",
+            "Time-entry pull complete. EmployeesToSync={EmployeesToSync}, TotalWeeksPulled={TotalWeeksPulled}, TotalEntriesPulled={TotalEntriesPulled}, TotalEntriesLoggedToKeka={TotalEntriesLoggedToKeka}, PreviousWeek={PreviousWeekYear}/{PreviousWeekPeriod}, PreviousWeekStart={PreviousWeekStart:yyyy-MM-dd}, PreviousWeekEnd={PreviousWeekEnd:yyyy-MM-dd}.",
             employeesToSync.Count,
             totalWeeksPulled,
             totalEntriesPulled,
             totalEntriesLoggedToKeka,
+            previousWeekYear,
+            previousWeekPeriod,
             previousWeek.WeekStartUtc,
             previousWeek.WeekEndUtc);
+    }
+
+    private async Task SyncTimeSheetAsync(CancellationToken stoppingToken)
+    {
+        var timeSheetState = await syncStateService.GetAsync(SyncTypes.TimeSheets, stoppingToken);
+
+        DateTime lastUpdatedSince;
+
+        if (timeSheetState is not null)
+        {
+            lastUpdatedSince = timeSheetState.LastUpdatedAt ?? GetWeekBoundsUtc(DateTime.UtcNow).WeekStartUtc;
+
+            logger.LogInformation(
+                "TimeSheets sync state found. LastUpdatedAt={LastUpdatedAt:o}.",
+                lastUpdatedSince);
+        }
+        else
+        {
+            lastUpdatedSince = GetWeekBoundsUtc(DateTime.UtcNow).WeekStartUtc;
+            var newState = new SyncState
+            {
+                SyncType = SyncTypes.TimeSheets,
+                LastUpdatedAt = lastUpdatedSince
+            };
+            await syncStateService.SaveAsync(newState, stoppingToken);
+
+            logger.LogInformation(
+                "TimeSheets sync state not found. Created new record with LastUpdatedAt={LastUpdatedAt:o}.",
+                lastUpdatedSince);
+        }
+
+        var timesheets = await connectWiseTimesheetService.GetTimesheetsSinceAsync(lastUpdatedSince, stoppingToken);
+
+        logger.LogInformation(
+            "TimeSheet sync fetched {Count} timesheet(s) updated after {LastUpdatedSince:o}.",
+            timesheets.Count,
+            lastUpdatedSince);
+
+        if (timesheets.Count == 0)
+            return;
+
+        // Group timesheets by member — one DB lookup per member, not per timesheet
+        var timesheetsByMember = timesheets
+            .Where(t => t.Member is not null && t.Member.Id > 0)
+            .GroupBy(t => t.Member!.Id.ToString(CultureInfo.InvariantCulture), StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .ToList();
+
+        logger.LogInformation(
+            "Processing {TimesheetCount} timesheet(s) across {MemberCount} unique member(s).",
+            timesheets.Count, timesheetsByMember.Count);
+
+        var totalPosted  = 0;
+        var totalSkipped = 0;
+        var missingCount = 0;
+
+        foreach (var memberGroup in timesheetsByMember)
+        {
+            var memberId      = memberGroup.Key;
+            var employeeState = await syncStateService.GetTimeEntryEmployeeDedupeStateAsync(memberId, stoppingToken);
+
+            if (employeeState is null)
+            {
+                missingCount++;
+                logger.LogWarning(
+                    "TimeEntries#{MemberId} not found in DB — skipping {TimesheetCount} timesheet(s). " +
+                    "Member exists in ConnectWise but has no employee checkpoint record.",
+                    memberId, memberGroup.Count());
+
+                // TODO: handle missing employee record (create on the fly, alert, etc.)
+                continue;
+            }
+
+            // Build updated SyncedPeriods starting from what's already in DB
+            var updatedSyncedPeriods = employeeState.SyncedPeriods
+                .ToDictionary(kvp => kvp.Key, kvp => new HashSet<int>(kvp.Value));
+
+            var memberNewPeriods = 0;
+
+            foreach (var timesheet in memberGroup.OrderBy(t => t.Year).ThenBy(t => t.Period))
+            {
+                var year   = timesheet.Year;
+                var period = timesheet.Period;
+
+                // Check if this year/period is already synced for this employee
+                if (employeeState.SyncedPeriods.TryGetValue(year, out var syncedPeriods)
+                    && syncedPeriods.Contains(period))
+                {
+                    // Already synced — check audit trail for any rejections
+                    var auditTrail = await connectWiseTimesheetService.GetTimesheetAuditTrailAsync(
+                        timesheet.Id, stoppingToken);
+
+                    var hasRejection = auditTrail.Any(a =>
+                        IsResubmissionStatus(a.StatusAfter)  ||
+                        IsResubmissionStatus(a.StatusBefore) ||
+                        IsResubmissionStatus(a.TransactionType));
+
+                    if (!hasRejection)
+                    {
+                        totalSkipped++;
+                        logger.LogDebug(
+                            "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}) already synced with no rejections — skipping.",
+                            timesheet.Id, memberId, year, period);
+                        continue;
+                    }
+
+                    // Rejection found — update logic not yet implemented
+                    logger.LogWarning(
+                        "Timesheet {TimesheetId} (member={MemberId}, year={Year}, period={Period}) has rejection history " +
+                        "but re-sync to Keka is not yet supported. Please update this timesheet in Keka manually.",
+                        timesheet.Id, memberId, year, period);
+                    totalSkipped++;
+                    continue;
+                }
+
+                // Period not yet synced — fetch time entries for this timesheet and log to Keka
+                logger.LogInformation(
+                    "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}) not synced yet — fetching time entries.",
+                    timesheet.Id, memberId, year, period);
+
+                var timeEntries = await connectWiseTimeEntryService.GetTimeEntriesByTimesheetIdAsync(
+                    timesheet.Id, stoppingToken);
+
+                var postedCount = 0;
+                foreach (var entry in timeEntries)
+                {
+                    var posted = await timeEntryOrchestrationService.LogTimeEntryAsync(
+                        entry,
+                        employeeState.Email,
+                        stoppingToken);
+
+                    if (posted)
+                        postedCount++;
+                }
+
+                totalPosted += postedCount;
+                memberNewPeriods++;
+
+                // Mark this year/period as synced in the local map
+                if (!updatedSyncedPeriods.ContainsKey(year))
+                    updatedSyncedPeriods[year] = [];
+                updatedSyncedPeriods[year].Add(period);
+
+                logger.LogInformation(
+                    "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}): fetched {EntryCount} entries, posted {PostedCount} to Keka.",
+                    timesheet.Id, memberId, year, period, timeEntries.Count, postedCount);
+            }
+
+            // Persist updated SyncedPeriods for this member if any new periods were processed
+            if (memberNewPeriods > 0)
+            {
+                await syncStateService.UpsertTimeEntryEmployeeDedupeStateAsync(new TimeEntryEmployeeDedupeState
+                {
+                    EmployeeId    = employeeState.EmployeeId,
+                    Email         = employeeState.Email,
+                    SyncedPeriods = updatedSyncedPeriods
+                }, stoppingToken);
+
+                logger.LogInformation(
+                    "DB updated for member {MemberId}: {NewPeriods} new period(s) added. " +
+                    "Total synced periods across all years: {TotalPeriods}.",
+                    memberId, memberNewPeriods,
+                    updatedSyncedPeriods.Values.Sum(s => s.Count));
+            }
+        }
+
+        // Update the TimeSheets checkpoint with the LastUpdated of the final (most recent) timesheet
+        // so the next run only fetches timesheets updated after this point
+        var lastTimesheetUpdatedAt = timesheets.Last().LastUpdated;
+        if (lastTimesheetUpdatedAt.HasValue)
+        {
+            await syncStateService.SaveAsync(new SyncState
+            {
+                SyncType      = SyncTypes.TimeSheets,
+                LastUpdatedAt = lastTimesheetUpdatedAt
+            }, stoppingToken);
+
+            logger.LogInformation(
+                "TimeSheets checkpoint updated. LastUpdatedAt={LastUpdatedAt:o}.",
+                lastTimesheetUpdatedAt);
+        }
+        else
+        {
+            logger.LogWarning(
+                "Last timesheet record has no LastUpdated value — TimeSheets checkpoint was not updated.");
+        }
+
+        logger.LogInformation(
+            "TimeSheet sync complete. Members={MemberCount}, MissingInDb={MissingCount}, Skipped={SkippedCount}, PostedToKeka={PostedCount}.",
+            timesheetsByMember.Count, missingCount, totalSkipped, totalPosted);
     }
 
     private async Task SyncTimeEntryEmployeesAsync(CancellationToken stoppingToken)
@@ -152,10 +355,9 @@ public sealed partial class Worker
         {
             await syncStateService.UpsertTimeEntryEmployeeDedupeStateAsync(new TimeEntryEmployeeDedupeState
             {
-                EmployeeId = member.Id.ToString(CultureInfo.InvariantCulture),
-                Email = member.Email,
-                DedupeKey = string.Empty,
-                LastUpdatedAt = null
+                EmployeeId    = member.Id.ToString(CultureInfo.InvariantCulture),
+                Email         = member.Email,
+                SyncedPeriods = []
             }, stoppingToken);
         }
 
@@ -167,34 +369,34 @@ public sealed partial class Worker
             connectWiseMembers.Count - membersToInsert.Count);
     }
 
-    private static DateTime ResolveStartWeekUtc(string? dedupeKey, DateTime previousWeekStartUtc)
+    /// <summary>
+    /// Returns true if the given status value indicates a rejection or resubmission event
+    /// that may require the timesheet to be re-synced to Keka.
+    /// </summary>
+    private static bool IsResubmissionStatus(string? status)
     {
-        if (!TryParseDedupeWeekStartUtc(dedupeKey, out var dedupeWeekStartUtc))
-            return previousWeekStartUtc;
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
 
-        var nextWeekToSyncUtc = dedupeWeekStartUtc.AddDays(7);
-        return nextWeekToSyncUtc <= previousWeekStartUtc ? nextWeekToSyncUtc : previousWeekStartUtc.AddDays(7);
+        return status.Contains("Reject",          StringComparison.OrdinalIgnoreCase) ||
+               status.Contains("ErrorsCorrected", StringComparison.OrdinalIgnoreCase) ||
+               status.Contains("Written Off",     StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool TryParseDedupeWeekStartUtc(string? dedupeKey, out DateTime weekStartUtc)
+    private static DateTime ResolveStartWeekUtc(Dictionary<int, HashSet<int>> syncedPeriods, DateTime previousWeekStartUtc)
     {
-        weekStartUtc = default;
+        if (syncedPeriods.Count == 0)
+            return previousWeekStartUtc;
 
-        if (string.IsNullOrWhiteSpace(dedupeKey))
-            return false;
+        var maxYear   = syncedPeriods.Keys.Max();
+        var maxPeriod = syncedPeriods[maxYear].Max();
 
-        if (!DateTime.TryParseExact(
-                dedupeKey.Trim(),
-                "yyyyMMdd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out var parsedUtc))
-        {
-            return false;
-        }
+        var lastSyncedWeekStart = DateTime.SpecifyKind(
+            ISOWeek.ToDateTime(maxYear, maxPeriod, DayOfWeek.Monday),
+            DateTimeKind.Utc);
 
-        weekStartUtc = DateTime.SpecifyKind(parsedUtc.Date, DateTimeKind.Utc);
-        return true;
+        var nextWeekToSyncUtc = lastSyncedWeekStart.AddDays(7);
+        return nextWeekToSyncUtc <= previousWeekStartUtc ? nextWeekToSyncUtc : previousWeekStartUtc.AddDays(7);
     }
 
     private static IReadOnlyList<(DateTime WeekStartUtc, DateTime WeekEndUtc)> GetWeeksInRange(DateTime startWeekUtc, DateTime endWeekUtc)

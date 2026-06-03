@@ -239,14 +239,15 @@ public sealed class DefaultProjectManagerEntry
 /// <summary>
 /// One time-entry checkpoint record per employee.
 /// syncType pattern: TimeEntries#{EmployeeId}
-/// dedupeKey stores the latest successfully synced UTC week start (yyyyMMdd).
-/// LastUpdatedAt stores when the successful Keka sync completed.
+/// SyncedPeriods is a map of year → set of period numbers already synced to Keka.
+/// Example: { 2025: {48,49,50}, 2026: {1,2,3} }
 /// </summary>
 public sealed class TimeEntryEmployeeDedupeState
 {
     public string EmployeeId { get; init; } = string.Empty;
     public string Email { get; init; } = string.Empty;
-    public string DedupeKey { get; init; } = string.Empty;
-    public DateTime? LastUpdatedAt { get; init; }
+
+    /// <summary>Year → set of ISO week period numbers successfully synced to Keka.</summary>
+    public Dictionary<int, HashSet<int>> SyncedPeriods { get; init; } = [];
 }
 

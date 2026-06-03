@@ -14,6 +14,7 @@ public sealed partial class Worker(
     IProjectStatusOrchestrationService projectStatusOrchestration,
     IConnectWiseMemberService connectWiseMemberService,
     IConnectWiseTimeEntryService connectWiseTimeEntryService,
+    IConnectWiseTimesheetService connectWiseTimesheetService,
     ITimeEntryOrchestrationService timeEntryOrchestrationService,
     ISyncStateService syncStateService) : BackgroundService
 {
@@ -36,7 +37,7 @@ public sealed partial class Worker(
                 var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
                 await SyncProjectsAsync(syncStartedAt, retryProjectIds, stoppingToken);
                 await SyncTimeEntryEmployeesAsync(stoppingToken);
-                await SyncTimeEntriesSmokeAsync(stoppingToken);
+                await SyncTimeSheetAsync(stoppingToken);
             }
             else
             {

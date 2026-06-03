@@ -81,6 +81,37 @@ public sealed class ConnectWiseTimeEntryService(
         return results;
     }
 
+    public async Task<IReadOnlyList<ConnectWiseTimeEntry>> GetTimeEntriesByTimesheetIdAsync(
+        int timesheetId,
+        CancellationToken cancellationToken = default)
+    {
+        if (timesheetId <= 0)
+        {
+            logger.LogWarning("Invalid timesheet ID: {TimesheetId}", timesheetId);
+            return [];
+        }
+
+        logger.LogInformation(
+            "Fetching ConnectWise time entries for timesheet ID {TimesheetId}.",
+            timesheetId);
+
+        var condition = $"timesheet/id = {timesheetId}";
+
+        var results = await FetchPagedAsync<ConnectWiseTimeEntry>(
+            relativeUrlBase: "/time/entries",
+            fields: Fields,
+            orderBy: "timeStart asc",
+            conditions: condition,
+            pageSize: Config.PageSize,
+            cancellationToken: cancellationToken);
+
+        logger.LogInformation(
+            "Fetched {Count} time entries for timesheet ID {TimesheetId}.",
+            results.Count, timesheetId);
+
+        return results;
+    }
+
     private static string AppendMemberFilterCondition(string baseCondition, IReadOnlyList<int>? memberIds)
     {
         if (memberIds is null || memberIds.Count == 0)

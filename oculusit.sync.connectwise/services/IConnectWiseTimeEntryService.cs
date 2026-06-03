@@ -22,4 +22,12 @@ public interface IConnectWiseTimeEntryService
         DateOnly date,
         IReadOnlyList<int>? memberIds = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches all ConnectWise time entries belonging to a specific timesheet ID.
+    /// Results are ordered by timeStart ascending.
+    /// </summary>
+    Task<IReadOnlyList<ConnectWiseTimeEntry>> GetTimeEntriesByTimesheetIdAsync(
+        int timesheetId,
+        CancellationToken cancellationToken = default);
 }
