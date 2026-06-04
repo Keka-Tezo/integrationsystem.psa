@@ -374,11 +374,24 @@ public sealed class TimeEntryOrchestrationService(
             var projectEndDate = kekaProject.EndDate?.Date;
             if (projectEndDate.HasValue && existingTask.EndDate?.Date != projectEndDate)
             {
-                await kekaProjectService.UpdateTaskAsync(
-                    kekaProject.Id,
-                    existingTask.Id,
-                    new KekaTaskUpdateRequest { EndDate = projectEndDate },
-                    cancellationToken);
+                try
+                {
+                    await kekaProjectService.UpdateTaskAsync(
+                        kekaProject.Id,
+                        existingTask.Id,
+                        new KekaTaskUpdateRequest { EndDate = projectEndDate },
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(
+                        ex,
+                        "Failed to update end date of task {TaskId} on Keka project {ProjectId}. Continuing with existing task.",
+                        existingTask.Id,
+                        kekaProject.Id);
+                    return string.Empty;
+                }
+
 
                 logger.LogInformation(
                     "Updated end date of task {TaskId} on Keka project {ProjectId} to {EndDate}.",
