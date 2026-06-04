@@ -230,7 +230,6 @@ public sealed class TimeEntryOrchestrationService(
 
             return new KekaProject
             {
-                ClientId = mappedProject.KekaClientId,
                 Id = mappedProject.KekaProjectId,
             };
         }
