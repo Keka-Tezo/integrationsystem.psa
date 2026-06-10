@@ -82,12 +82,13 @@ public sealed partial class Worker
         var projectStatusSyncState = await syncStateService.GetAsync(SyncTypes.ProjectStatus, stoppingToken);
 
         var projectSyncState = await syncStateService.GetAsync(SyncTypes.Project, stoppingToken);
+        var allEmployeesState = await syncStateService.GetTimeEntryEmployeeDedupeStatesAsync(stoppingToken);
 
         if (projectSyncState is null)
         {
             logger.LogInformation("No previous project sync state found. Running full project sync.");
 
-            var result        = await projectOrchestration.SyncProjectsAsync(companySyncState, projectStatusSyncState, stoppingToken);
+            var result        = await projectOrchestration.SyncProjectsAsync(companySyncState, projectStatusSyncState, allEmployeesState, stoppingToken);
             var lastUpdatedAt  = result.LastRecordUpdatedAt ?? syncStartedAt;
 
             await syncStateService.SaveAsync(new SyncState
@@ -116,7 +117,7 @@ public sealed partial class Worker
         {
             logger.LogInformation("Incremental project sync. Last sync was at {LastUpdatedAt}.", projectSyncState.LastUpdatedAt);
 
-            var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, projectStatusSyncState, retryProjectIds, stoppingToken);
+            var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, projectStatusSyncState, allEmployeesState, retryProjectIds, stoppingToken);
             var lastUpdatedAt  = result.LastRecordUpdatedAt ?? syncStartedAt;
 
             await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);

@@ -24,10 +24,17 @@ public sealed class KekaProjectRequest
     public DateTime StartDate { get; init; }
 
     [JsonPropertyName("endDate")]
-    public DateTime EndDate { get; init; }
+    public DateTime? EndDate { get; init; }
 
     [JsonPropertyName("isBillable")]
     public bool IsBillable { get; init; }
+
+    /// <summary>Project billing type.</summary>
+    [JsonPropertyName("billingType")]
+    public BillingType BillingType { get; init; }
+
+    [JsonPropertyName("projectManager")]
+    public IReadOnlyList<string>? ProjectManager { get; init; }
 }
 
 public sealed class KekaProjectUpdateRequest
@@ -53,6 +60,13 @@ public sealed class KekaProjectUpdateRequest
 
     [JsonPropertyName("isBillable")]
     public bool IsBillable { get; init; }
+
+    /// <summary>Project billing type.</summary>
+    [JsonPropertyName("billingType")]
+    public BillingType BillingType { get; init; }
+
+    [JsonPropertyName("projectManager")]
+    public IReadOnlyList<string>? ProjectManager { get; init; }
 }
 
 public sealed class KekaTaskRequest
@@ -103,4 +117,13 @@ public sealed class KekaTaskUpdateRequest
     [JsonPropertyName("phaseId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PhaseId { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum BillingType
+{
+    NoBilling = 0,          // No billing
+    FixedBid = 1,           // Fixed bid project
+    TimeAndMaterials = 2,   // Time and materials billing
+    Retainer = 4            // Retainer project
 }

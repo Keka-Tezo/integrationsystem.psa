@@ -14,6 +14,7 @@ public sealed class CompanyOrchestrationService(
     IKekaClientService kekaClientService,
     IKekaCurrencyService kekaCurrencyService,
     IKekaProjectService kekaProjectService,
+    IKekaEmployeeService kekaEmployeeService,
     ILogger<CompanyOrchestrationService> logger) : ICompanyOrchestrationService
 {
     public async Task<IReadOnlyList<InitialCompanyEntry>> BuildInitialCompanySnapshotAsync(CancellationToken cancellationToken = default)
@@ -98,7 +99,7 @@ public sealed class CompanyOrchestrationService(
         return snapshots;
     }
 
-    public async Task<CompanySyncResult> SyncCompaniesToKekaAsync(CancellationToken cancellationToken = default)
+    public async Task<CompanySyncResult> SyncCompaniesToKekaAsync(DefaultProjectEntry? defaultProject, CancellationToken cancellationToken = default)
     {
         var companies = await connectWiseService.GetAllCompaniesAsync(cancellationToken);
         logger.LogInformation("Fetched {Count} companies from ConnectWise. Starting Keka sync.", companies.Count);
@@ -108,13 +109,15 @@ public sealed class CompanyOrchestrationService(
         return await ProcessCompaniesAsync(
             companies,
             kekaClientIdByCompanyId,
+            defaultProject,
             includeUpdatedEntriesInResult: true,
-            syncLabel: "Full",
+            syncLabel: "Full",  
             cancellationToken: cancellationToken);
     }
 
     public async Task<CompanySyncResult> SyncCompaniesIncrementalAsync(
         SyncState syncState,
+        DefaultProjectEntry? defaultProject,
         IReadOnlyList<string> retryCompanyIds,
         CancellationToken cancellationToken = default)
     {
@@ -154,6 +157,7 @@ public sealed class CompanyOrchestrationService(
         return await ProcessCompaniesAsync(
             mergedCompanies,
             kekaIdByCompanyId,
+            defaultProject,
             includeUpdatedEntriesInResult: false,
             syncLabel: "Incremental",
             cancellationToken: cancellationToken);
@@ -175,6 +179,7 @@ public sealed class CompanyOrchestrationService(
     private async Task<CompanySyncResult> ProcessCompaniesAsync(
         IReadOnlyList<ConnectWiseCompany> companies,
         IReadOnlyDictionary<string, string> kekaClientIdByCompanyId,
+        DefaultProjectEntry? defaultProject,
         bool includeUpdatedEntriesInResult,
         string syncLabel,
         CancellationToken cancellationToken)
@@ -202,6 +207,17 @@ public sealed class CompanyOrchestrationService(
                 var request = KekaClientMapper.MapToKekaClientRequest(company, usdCurrencyId);
                 var companyDateEntered = company.DateEntered!.Value;
 
+                KekaEmployee? kekaEmployee = null;
+
+                if (defaultProject?.ProjectManager is not null)
+                {
+                    kekaEmployee = await kekaEmployeeService.SearchEmployeeByEmailAsync(defaultProject.ProjectManager.Email, cancellationToken);
+                }
+                else
+                {
+                    logger.LogWarning("Default Project manager doesnot exists in database.");
+                }
+
                 if (!kekaClientIdByCompanyId.TryGetValue(companyId, out var kekaClientId))
                 {
                     kekaClientId = await kekaClientService.CreateClientAsync(request, cancellationToken);
@@ -212,7 +228,7 @@ public sealed class CompanyOrchestrationService(
 
                     try
                     {
-                        await CreateDefaultProjectAsync(companyId, kekaClientId, companyDateEntered, cancellationToken);
+                        await CreateDefaultProjectAsync(companyId, kekaClientId, companyDateEntered, kekaEmployee, cancellationToken);
                     }
                     catch (TimeoutRejectedException tex)
                     {
@@ -245,7 +261,7 @@ public sealed class CompanyOrchestrationService(
 
                     try
                     {
-                        await CreateDefaultProjectAsync(companyId, kekaClientId, companyDateEntered, cancellationToken);
+                        await CreateDefaultProjectAsync(companyId, kekaClientId, companyDateEntered, kekaEmployee, cancellationToken);
                     }
                     catch (TimeoutRejectedException tex)
                     {
@@ -328,9 +344,9 @@ public sealed class CompanyOrchestrationService(
         string companyId,
         string kekaClientId,
         DateTime startDate,
+        KekaEmployee? kekaEmployee,
         CancellationToken cancellationToken)
     {
-        var endDate = DateTime.MaxValue;
         var projectCode = $"{companyId}-CWDP";
         const string defaultProjectName = "CW: Default Project";
 
@@ -349,8 +365,10 @@ public sealed class CompanyOrchestrationService(
                 Code       = projectCode,
                 Status     = 0,
                 StartDate  = startDate,
-                EndDate    = endDate,
-                IsBillable = true
+                EndDate    = null,
+                IsBillable = true,
+                BillingType = BillingType.FixedBid,
+                ProjectManager = new List<string> { kekaEmployee?.Id ?? string.Empty }
             };
 
             kekaProjectId = await kekaProjectService.CreateProjectAsync(projectRequest, cancellationToken);
@@ -375,7 +393,7 @@ public sealed class CompanyOrchestrationService(
         }
 
         var taskStartDate = startDate.Date;
-        var taskEndDate = endDate.Date;
+        var taskEndDate = DateTime.MaxValue;
 
         var existingTasks = await kekaProjectService.GetTasksByProjectAsync(kekaProjectId, cancellationToken);
         var existingTaskNames = existingTasks
