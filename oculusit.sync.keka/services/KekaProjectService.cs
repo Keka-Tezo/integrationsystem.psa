@@ -88,6 +88,43 @@ public sealed class KekaProjectService(
         return allProjects;
     }
 
+    public async Task<KekaProject?> GetProjectByIdAsync(string projectId, CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var uri = BuildUri($"/psa/projects/{projectId}");
+        _logger.LogDebug("Fetching Keka project by ID {ProjectId}.", projectId);
+
+        var response = await _httpClient.GetAsync(uri, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            _logger.LogWarning("Received 401 fetching Keka project {ProjectId}. Refreshing token.", projectId);
+            await RefreshAuthHeaderAsync(cancellationToken);
+            response = await _httpClient.GetAsync(uri, cancellationToken);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("Failed to fetch Keka project {ProjectId}. StatusCode: {StatusCode}, Body: {Body}",
+                projectId, response.StatusCode, errorBody);
+            return null;
+        }
+
+        var envelope = await response.Content
+            .ReadFromJsonAsync<KekaDataResponse<KekaProject>>(_jsonOptions, cancellationToken);
+
+        if (envelope?.Data is null)
+        {
+            _logger.LogWarning("Keka project {ProjectId} returned empty data.", projectId);
+            return null;
+        }
+
+        _logger.LogInformation("Fetched Keka project {ProjectId}.", projectId);
+        return envelope.Data;
+    }
+
     public async Task<IReadOnlyList<KekaProject>> GetProjectsByClientIdAsync(string clientId, CancellationToken cancellationToken = default)
     {
         await SetAuthHeaderAsync(cancellationToken);
@@ -254,6 +291,45 @@ public sealed class KekaProjectService(
         return envelope.Data;
     }
 
+    public async Task UpdateTaskAsync(string projectId, string taskId, KekaTaskUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var uri = BuildUri($"/psa/projects/{projectId}/tasks/{taskId}");
+        _logger.LogDebug("Updating Keka task {TaskId} for project {ProjectId}.", taskId, projectId);
+
+        var response = await _httpClient.PutAsJsonAsync(uri, request, _jsonOptions, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            _logger.LogWarning("Received 401 updating Keka task {TaskId} for project {ProjectId}. Refreshing token.", taskId, projectId);
+            await RefreshAuthHeaderAsync(cancellationToken);
+            response = await _httpClient.PutAsJsonAsync(uri, request, _jsonOptions, cancellationToken);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError("Failed to update Keka task {TaskId} for project {ProjectId}. StatusCode: {StatusCode}, Body: {Body}",
+                taskId, projectId, response.StatusCode, errorBody);
+            throw new HttpRequestException(
+                $"Keka PUT /psa/projects/{projectId}/tasks/{taskId} failed ({(int)response.StatusCode}): {errorBody}",
+                null, response.StatusCode);
+        }
+
+        var envelope = await response.Content
+            .ReadFromJsonAsync<KekaUpdateTaskResponse>(_jsonOptions, cancellationToken);
+
+        if (envelope is null || !envelope.Succeeded)
+        {
+            var errors = envelope?.Errors is { Count: > 0 } e ? string.Join(", ", e) : "none";
+            throw new InvalidOperationException(
+                $"Keka update task '{taskId}' for project '{projectId}' failed. Message: {envelope?.Message}. Errors: {errors}");
+        }
+
+        _logger.LogInformation("Successfully updated Keka task {TaskId} for project {ProjectId}.", taskId, projectId);
+    }
+
     public async Task<IReadOnlyList<KekaTask>> GetTasksByProjectAsync(string projectId, CancellationToken cancellationToken = default)
     {
         await SetAuthHeaderAsync(cancellationToken);
@@ -273,11 +349,9 @@ public sealed class KekaProjectService(
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Failed to fetch tasks for Keka project {ProjectId}. StatusCode: {StatusCode}, Body: {Body}",
+            _logger.LogWarning("Failed to fetch tasks for Keka project {ProjectId}. StatusCode: {StatusCode}, Body: {Body}",
                 projectId, response.StatusCode, errorBody);
-            throw new HttpRequestException(
-                $"Keka GET /psa/projects/{projectId}/tasks failed ({(int)response.StatusCode}): {errorBody}",
-                null, response.StatusCode);
+            return [];
         }
 
         var envelope = await response.Content
@@ -313,9 +387,7 @@ public sealed class KekaProjectService(
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Failed to create Keka project allocation for project {ProjectId}. StatusCode: {StatusCode}, Body: {Body}",
                 projectId, response.StatusCode, errorBody);
-            throw new HttpRequestException(
-                $"Keka POST /psa/projects/{projectId}/allocations failed ({(int)response.StatusCode}): {errorBody}",
-                null, response.StatusCode);
+            return string.Empty;
         }
 
         var envelope = await response.Content
@@ -324,8 +396,10 @@ public sealed class KekaProjectService(
         if (envelope is null || !envelope.Succeeded || string.IsNullOrEmpty(envelope.Data))
         {
             var errors = envelope?.Errors is { Count: > 0 } e ? string.Join(", ", e) : "none";
-            throw new InvalidOperationException(
-                $"Keka create project allocation for project '{projectId}' failed. Message: {envelope?.Message}. Errors: {errors}");
+            _logger.LogError(
+                "Keka create project allocation for project '{ProjectId}' failed. Message: {Message}. Errors: {Errors}",
+                projectId, envelope?.Message, errors);
+            return string.Empty;
         }
 
         _logger.LogInformation("Successfully created Keka project allocation {AllocationId} for project {ProjectId}.",
@@ -378,5 +452,37 @@ public sealed class KekaProjectService(
 
         _logger.LogInformation("Fetched {Count} allocations for Keka project {ProjectId}.", allAllocations.Count, projectId);
         return allAllocations;
+    }
+
+    public async Task<IReadOnlyList<KekaBillingRole>> GetAllBillingRolesAsync(CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var uri = BuildUri("/psa/billingroles");
+        _logger.LogDebug("Fetching all Keka billing roles.");
+
+        var response = await _httpClient.GetAsync(uri, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            _logger.LogWarning("Received 401 fetching Keka billing roles. Refreshing token.");
+            await RefreshAuthHeaderAsync(cancellationToken);
+            response = await _httpClient.GetAsync(uri, cancellationToken);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("Failed to fetch Keka billing roles. StatusCode: {StatusCode}, Body: {Body}",
+                response.StatusCode, errorBody);
+            return [];
+        }
+
+        var envelope = await response.Content
+            .ReadFromJsonAsync<KekaDataListResponse<KekaBillingRole>>(_jsonOptions, cancellationToken);
+
+        var roles = (IReadOnlyList<KekaBillingRole>?)envelope?.Data ?? [];
+        _logger.LogInformation("Fetched {Count} Keka billing roles.", roles.Count);
+        return roles;
     }
 }

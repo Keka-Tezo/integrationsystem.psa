@@ -67,4 +67,33 @@ public interface ISyncStateService
     /// Pass null to clear the failure (i.e. reset after a successful run).
     /// </summary>
     Task SaveFailedProjectStatusAsync(FailedProjectStatusEntry? failure, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all per-employee time-entry checkpoint records where syncType starts with TimeEntries#.
+    /// </summary>
+    Task<IReadOnlyList<TimeEntryEmployeeDedupeState>> GetTimeEntryEmployeeDedupeStatesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns employee checkpoint records that still need processing for the given year and period.
+    /// Includes employees with no period set, or whose last synced year/period is before the given values.
+    /// </summary>
+    Task<IReadOnlyList<TimeEntryEmployeeDedupeState>> GetTimeEntryEmployeeDedupeStatesToSyncAsync(int year, int period, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the successful-sync checkpoint for a single employee where syncType pattern is TimeEntries#{employeeId}.
+    /// Returns null when no record exists.
+    /// </summary>
+    Task<TimeEntryEmployeeDedupeState?> GetTimeEntryEmployeeDedupeStateAsync(string employeeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Upserts the checkpoint for a single employee using syncType pattern TimeEntries#{employeeId}.
+    /// SyncedPeriods is the full updated map of year → synced period set and is written in full each call.
+    /// </summary>
+    Task UpsertTimeEntryEmployeeDedupeStateAsync(TimeEntryEmployeeDedupeState state, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ensures the DefaultProject sync type exists in the database.
+    /// If it doesn't exist, creates it with default project manager information (Jason William).
+    /// </summary>
+    Task EnsureDefaultProjectAsync(CancellationToken cancellationToken = default);
 }

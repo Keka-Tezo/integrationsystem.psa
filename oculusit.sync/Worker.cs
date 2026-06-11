@@ -2,6 +2,7 @@ using oculusit.sync.connectwise.services;
 using oculusit.sync.core.interfaces;
 using oculusit.sync.core.models;
 using oculusit.sync.orchestration;
+using oculusit.sync.orchestration.services;
 
 namespace oculusit.sync;
 
@@ -11,7 +12,10 @@ public sealed partial class Worker(
     ICompanyOrchestrationService companyOrchestration,
     IProjectOrchestrationService projectOrchestration,
     IProjectStatusOrchestrationService projectStatusOrchestration,
+    IConnectWiseMemberService connectWiseMemberService,
     IConnectWiseTimeEntryService connectWiseTimeEntryService,
+    IConnectWiseTimesheetService connectWiseTimesheetService,
+    ITimeEntryOrchestrationService timeEntryOrchestrationService,
     ISyncStateService syncStateService) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -27,12 +31,15 @@ public sealed partial class Worker(
 
             if (initialCompanySyncState is not null && initialProjectSyncState is not null)
             {
+                await syncStateService.EnsureDefaultProjectAsync(stoppingToken);
+
                 await SyncProjectStatusAsync(syncStartedAt, stoppingToken);
                 var retryCompanyIds = await GetRetryCompanyIdsFromSyncStateAsync(stoppingToken);
                 await SyncCompaniesAsync(syncStartedAt, retryCompanyIds, stoppingToken);
                 var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
                 await SyncProjectsAsync(syncStartedAt, retryProjectIds, stoppingToken);
-                await SyncTimeEntriesSmokeAsync(stoppingToken);                
+                await SyncTimeEntryEmployeesAsync(stoppingToken);
+                await SyncTimeSheetAsync(stoppingToken);
             }
             else
             {
@@ -49,6 +56,9 @@ public sealed partial class Worker(
         catch (Exception ex)
         {
             logger.LogCritical(ex, "An unhandled exception terminated the sync worker.");
+        }
+        finally
+        {
             // Stop the host so the process exits with a non-zero code,
             // which signals ECS/container orchestrators to restart the task.
             lifetime.StopApplication();

@@ -48,6 +48,7 @@ public sealed class DynamoDbSyncStateService(
     private const string TotalAttribute             = "total";
     private const string SucceededAttribute         = "succeeded";
     private const string FailedAttribute            = "failed";
+    private const string SyncedPeriodsAttribute      = "syncedPeriods";
 
     private readonly string _tableName = options.Value.TableName;
 
@@ -848,6 +849,173 @@ public sealed class DynamoDbSyncStateService(
             : "Saved failed project status entry with error: {Error}.", failure?.ErrorMessage);
     }
 
+    public async Task<IReadOnlyList<TimeEntryEmployeeDedupeState>> GetTimeEntryEmployeeDedupeStatesAsync(CancellationToken cancellationToken = default)
+    {
+        var results = new List<TimeEntryEmployeeDedupeState>();
+        Dictionary<string, AttributeValue>? lastEvaluatedKey = null;
+
+        do
+        {
+            var request = new ScanRequest
+            {
+                TableName = _tableName,
+                ProjectionExpression = "#syncType, #email, #syncedPeriods",
+                FilterExpression = "begins_with(#syncType, :prefix)",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#syncType"]      = KeyAttribute,
+                    ["#email"]         = EmailAttribute,
+                    ["#syncedPeriods"] = SyncedPeriodsAttribute
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":prefix"] = new AttributeValue { S = $"{SyncTypes.TimeEntries}#" }
+                },
+                ExclusiveStartKey = lastEvaluatedKey
+            };
+
+            var response = await dynamoDb.ScanAsync(request, cancellationToken);
+            foreach (var item in response.Items)
+            {
+                if (!item.TryGetValue(KeyAttribute, out var syncTypeAttr) || string.IsNullOrWhiteSpace(syncTypeAttr.S))
+                    continue;
+
+                results.Add(MapTimeEntryEmployeeState(syncTypeAttr.S, item));
+            }
+
+            lastEvaluatedKey = response.LastEvaluatedKey;
+        }
+        while (lastEvaluatedKey is { Count: > 0 });
+
+        logger.LogInformation("Loaded {Count} time-entry employee checkpoint records.", results.Count);
+        return results;
+    }
+
+    public async Task<IReadOnlyList<TimeEntryEmployeeDedupeState>> GetTimeEntryEmployeeDedupeStatesToSyncAsync(int year, int period, CancellationToken cancellationToken = default)
+    {
+        var all = await GetTimeEntryEmployeeDedupeStatesAsync(cancellationToken);
+
+        var results = all
+            .Where(s => !s.SyncedPeriods.TryGetValue(year, out var periods) || !periods.Contains(period))
+            .ToList();
+
+        logger.LogInformation(
+            "Loaded {Count} time-entry employee checkpoint records requiring sync for period {Year}/{Period}.",
+            results.Count, year, period);
+
+        return results;
+    }
+
+    public async Task<TimeEntryEmployeeDedupeState?> GetTimeEntryEmployeeDedupeStateAsync(string employeeId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(employeeId))
+            return null;
+
+        var normalizedEmployeeId = employeeId.Trim();
+        var syncType = $"{SyncTypes.TimeEntries}#{normalizedEmployeeId}";
+
+        var request = new GetItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = syncType }
+            }
+        };
+
+        var response = await dynamoDb.GetItemAsync(request, cancellationToken);
+        if (!response.IsItemSet)
+            return null;
+
+        return MapTimeEntryEmployeeState(syncType, response.Item);
+    }
+
+    public async Task UpsertTimeEntryEmployeeDedupeStateAsync(TimeEntryEmployeeDedupeState state, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(state.EmployeeId))
+            return;
+
+        var employeeId = state.EmployeeId.Trim();
+        var syncType = $"{SyncTypes.TimeEntries}#{employeeId}";
+
+        var updateRequest = new UpdateItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = syncType }
+            },
+            UpdateExpression = "SET #email = :email, #syncedPeriods = :syncedPeriods",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#email"]         = EmailAttribute,
+                ["#syncedPeriods"] = SyncedPeriodsAttribute
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":email"]         = new AttributeValue { S = state.Email ?? string.Empty },
+                [":syncedPeriods"] = BuildSyncedPeriodsAttribute(state.SyncedPeriods)
+            }
+        };
+
+        await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
+    }
+
+    private static TimeEntryEmployeeDedupeState MapTimeEntryEmployeeState(
+        string syncType,
+        IReadOnlyDictionary<string, AttributeValue> item)
+    {
+        var employeeId = syncType.StartsWith($"{SyncTypes.TimeEntries}#", StringComparison.Ordinal)
+            ? syncType[(SyncTypes.TimeEntries.Length + 1)..]
+            : syncType;
+
+        var syncedPeriods = new Dictionary<int, HashSet<int>>();
+        if (item.TryGetValue(SyncedPeriodsAttribute, out var spAttr) && spAttr.M is { Count: > 0 })
+        {
+            foreach (var (yearKey, periodsAttr) in spAttr.M)
+            {
+                if (!int.TryParse(yearKey, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year))
+                    continue;
+
+                var periodSet = new HashSet<int>();
+                foreach (var p in periodsAttr.SS ?? [])
+                    if (int.TryParse(p, NumberStyles.Integer, CultureInfo.InvariantCulture, out var period))
+                        periodSet.Add(period);
+
+                syncedPeriods[year] = periodSet;
+            }
+        }
+
+        return new TimeEntryEmployeeDedupeState
+        {
+            EmployeeId    = employeeId,
+            Email         = item.TryGetValue(EmailAttribute, out var emailAttr) ? emailAttr.S ?? string.Empty : string.Empty,
+            SyncedPeriods = syncedPeriods
+        };
+    }
+
+    private static AttributeValue BuildSyncedPeriodsAttribute(Dictionary<int, HashSet<int>> syncedPeriods)
+    {
+        var map = new Dictionary<string, AttributeValue>();
+        foreach (var (year, periods) in syncedPeriods)
+        {
+            if (periods.Count == 0)
+                continue;
+
+            map[year.ToString(CultureInfo.InvariantCulture)] = new AttributeValue
+            {
+                SS = periods
+                    .Select(p => p.ToString(CultureInfo.InvariantCulture))
+                    .ToList()
+            };
+        }
+
+        // DynamoDB does not allow empty maps — fall back to an empty string placeholder
+        return map.Count > 0
+            ? new AttributeValue { M = map }
+            : new AttributeValue { M = new Dictionary<string, AttributeValue>(), IsMSet = true };
+    }
+
     private static IReadOnlyList<ProjectStatusEntry> ReadProjectStatuses(
         Dictionary<string, AttributeValue> item)
     {
@@ -871,5 +1039,64 @@ public sealed class DynamoDbSyncStateService(
         }
 
         return statuses;
+    }
+
+    public async Task EnsureDefaultProjectAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            logger.LogDebug("Checking if DefaultProject sync type exists in DynamoDB.");
+
+            var request = new GetItemRequest
+            {
+                TableName = _tableName,
+                Key = new Dictionary<string, AttributeValue>
+                {
+                    [KeyAttribute] = new AttributeValue { S = SyncTypes.DefaultProject }
+                },
+                ProjectionExpression = KeyAttribute  // Only fetch the key, not the entire item
+            };
+
+            var response = await dynamoDb.GetItemAsync(request, cancellationToken);
+
+            if (!response.IsItemSet)
+            {
+                const string projectManagerEmail = "Jason.w@oculusit.com";
+                const string projectManagerName = "Jason William";
+
+                var item = new Dictionary<string, AttributeValue>
+                {
+                    [KeyAttribute] = new AttributeValue { S = SyncTypes.DefaultProject },
+                    [ProjectManagerAttribute] = new AttributeValue
+                    {
+                        M = new Dictionary<string, AttributeValue>
+                        {
+                            [EmailAttribute] = new AttributeValue { S = projectManagerEmail },
+                            [NameAttribute] = new AttributeValue { S = projectManagerName }
+                        }
+                    },
+                    [LastUpdatedAtAttribute] = new AttributeValue { S = DateTime.UtcNow.ToString("o") }
+                };
+
+                var putRequest = new PutItemRequest
+                {
+                    TableName = _tableName,
+                    Item = item
+                };
+
+                await dynamoDb.PutItemAsync(putRequest, cancellationToken);
+                logger.LogInformation("Initialized DefaultProject sync type with project manager: {ProjectManagerName} ({ProjectManagerEmail}).", 
+                    projectManagerName, projectManagerEmail);
+            }
+            else
+            {
+                logger.LogDebug("DefaultProject sync type already exists in the database.");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error initializing DefaultProject sync type in the database.");
+            throw;
+        }
     }
 }
