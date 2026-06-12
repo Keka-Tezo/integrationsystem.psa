@@ -22,6 +22,8 @@ public sealed class DynamoDbSyncStateService(
     private const string InitialProjectsAttribute  = "initialProjects";
     private const string FailedProjectsAttribute   = "failedProjects";
     private const string FailedCompaniesAttribute  = "failedCompanies";
+    private const string FailedTimeSheetsAttribute = "failedTimeSheets";
+    private const string RetryTimeSheetsAttribute  = "retryTimeSheets";
     private const string ProjectManagerAttribute   = "projectManager";
     private const string EmailAttribute            = "email";
     private const string ProjectStatusesAttribute       = "projectStatuses";
@@ -42,13 +44,17 @@ public sealed class DynamoDbSyncStateService(
     private const string FailedTaskKeysAttribute   = "failedTaskKeys";
     private const string NameAttribute             = "name";
     private const string ErrorMessageAttribute     = "errorMessage";
+    private const string MemberIdAttribute         = "memberId";
+    private const string TimeSheetEmailAttribute   = "email";
+    private const string YearAttribute             = "year";
+    private const string PeriodAttribute           = "period";
     private const string ValueAttribute            = "value";
     private const string MappedValueAttribute      = "mappedValue";
-    private const string SummaryAttribute           = "summary";
-    private const string TotalAttribute             = "total";
-    private const string SucceededAttribute         = "succeeded";
-    private const string FailedAttribute            = "failed";
-    private const string SyncedPeriodsAttribute      = "syncedPeriods";
+    private const string SummaryAttribute          = "summary";
+    private const string TotalAttribute            = "total";
+    private const string SucceededAttribute        = "succeeded";
+    private const string FailedAttribute           = "failed";
+    private const string SyncedPeriodsAttribute    = "syncedPeriods";
 
     private readonly string _tableName = options.Value.TableName;
 
@@ -234,6 +240,9 @@ public sealed class DynamoDbSyncStateService(
             }
         }
 
+        var failedTimeSheets = await GetFailedTimeSheetsAsync(cancellationToken);
+        var retryTimeSheets = await GetRetryTimeSheetsAsync(cancellationToken);
+
         return new SyncState
         {
             SyncType              = syncType,
@@ -245,6 +254,8 @@ public sealed class DynamoDbSyncStateService(
             InitialProjects       = initialProjects,
             FailedProjects        = failedProjects,
             FailedCompanies       = failedCompanies,
+            FailedTimeSheets      = failedTimeSheets,
+            RetryTimeSheets       = retryTimeSheets,
             ProjectStatuses       = ReadProjectStatuses(response.Item)
         };
     }
@@ -328,6 +339,44 @@ public sealed class DynamoDbSyncStateService(
                         [KekaProjectIdAttribute]= new AttributeValue { S = p.KekaProjectId },
                         [KekaProjectCodeAttribute]  = new AttributeValue { S = p.KekaProjectCode },
                         [KekaProjectNameAttribute]   = new AttributeValue { S = p.KekaProjectName }
+                    }
+                }).ToList()
+            };
+        }
+
+        if (state.FailedTimeSheets.Count > 0)
+        {
+            item[FailedTimeSheetsAttribute] = new AttributeValue
+            {
+                L = state.FailedTimeSheets.Select(t => new AttributeValue
+                {
+                    M = new Dictionary<string, AttributeValue>
+                    {
+                        [IdAttribute]           = new AttributeValue { S = t.Id },
+                        [MemberIdAttribute]     = new AttributeValue { S = t.MemberId },
+                        [TimeSheetEmailAttribute] = new AttributeValue { S = t.Email },
+                        [YearAttribute]         = new AttributeValue { N = t.Year.ToString(CultureInfo.InvariantCulture) },
+                        [PeriodAttribute]       = new AttributeValue { N = t.Period.ToString(CultureInfo.InvariantCulture) },
+                        [ErrorMessageAttribute] = new AttributeValue { S = t.ErrorMessage }
+                    }
+                }).ToList()
+            };
+        }
+
+        if (state.RetryTimeSheets.Count > 0)
+        {
+            item[RetryTimeSheetsAttribute] = new AttributeValue
+            {
+                L = state.RetryTimeSheets.Select(t => new AttributeValue
+                {
+                    M = new Dictionary<string, AttributeValue>
+                    {
+                        [IdAttribute]           = new AttributeValue { S = t.Id },
+                        [MemberIdAttribute]     = new AttributeValue { S = t.MemberId },
+                        [TimeSheetEmailAttribute] = new AttributeValue { S = t.Email },
+                        [YearAttribute]         = new AttributeValue { N = t.Year.ToString(CultureInfo.InvariantCulture) },
+                        [PeriodAttribute]       = new AttributeValue { N = t.Period.ToString(CultureInfo.InvariantCulture) },
+                        [ErrorMessageAttribute] = new AttributeValue { S = t.ErrorMessage }
                     }
                 }).ToList()
             };
@@ -1098,5 +1147,193 @@ public sealed class DynamoDbSyncStateService(
             logger.LogError(ex, "Error initializing DefaultProject sync type in the database.");
             throw;
         }
+    }
+
+    public async Task<IReadOnlyList<FailedTimeSheetEntry>> GetFailedTimeSheetsAsync(CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("Reading failed timesheet entries from DynamoDB (syncType={SyncType}).", SyncTypes.FailedTimeSheets);
+
+        var request = new GetItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.FailedTimeSheets }
+            }
+        };
+
+        var response = await dynamoDb.GetItemAsync(request, cancellationToken);
+        if (!response.IsItemSet || !response.Item.TryGetValue(FailedTimeSheetsAttribute, out var itemsAttr) || itemsAttr.L is not { Count: > 0 })
+            return [];
+
+        var entries = new List<FailedTimeSheetEntry>();
+        foreach (var item in itemsAttr.L)
+        {
+            if (item.M is null)
+                continue;
+
+            item.M.TryGetValue(IdAttribute, out var idAttr);
+            item.M.TryGetValue(MemberIdAttribute, out var memberIdAttr);
+            item.M.TryGetValue(TimeSheetEmailAttribute, out var emailAttr);
+            item.M.TryGetValue(YearAttribute, out var yearAttr);
+            item.M.TryGetValue(PeriodAttribute, out var periodAttr);
+            item.M.TryGetValue(ErrorMessageAttribute, out var errorAttr);
+
+            if (string.IsNullOrWhiteSpace(idAttr?.S))
+                continue;
+
+            entries.Add(new FailedTimeSheetEntry
+            {
+                Id = idAttr.S,
+                MemberId = memberIdAttr?.S ?? string.Empty,
+                Email = emailAttr?.S ?? string.Empty,
+                Year = int.TryParse(yearAttr?.N, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year) ? year : 0,
+                Period = int.TryParse(periodAttr?.N, NumberStyles.Integer, CultureInfo.InvariantCulture, out var period) ? period : 0,
+                ErrorMessage = errorAttr?.S ?? string.Empty
+            });
+        }
+
+        logger.LogInformation("Loaded {Count} failed timesheet entries.", entries.Count);
+        return entries;
+    }
+
+    public async Task<IReadOnlyList<RetryTimeSheetEntry>> GetRetryTimeSheetsAsync(CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("Reading retry timesheet entries from DynamoDB (syncType={SyncType}).", SyncTypes.RetryTimeSheets);
+
+        var request = new GetItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.RetryTimeSheets }
+            }
+        };
+
+        var response = await dynamoDb.GetItemAsync(request, cancellationToken);
+        if (!response.IsItemSet || !response.Item.TryGetValue(RetryTimeSheetsAttribute, out var itemsAttr) || itemsAttr.L is not { Count: > 0 })
+            return [];
+
+        var entries = new List<RetryTimeSheetEntry>();
+        foreach (var item in itemsAttr.L)
+        {
+            if (item.M is null)
+                continue;
+
+            item.M.TryGetValue(IdAttribute, out var idAttr);
+            item.M.TryGetValue(MemberIdAttribute, out var memberIdAttr);
+            item.M.TryGetValue(TimeSheetEmailAttribute, out var emailAttr);
+            item.M.TryGetValue(YearAttribute, out var yearAttr);
+            item.M.TryGetValue(PeriodAttribute, out var periodAttr);
+            item.M.TryGetValue(ErrorMessageAttribute, out var errorAttr);
+
+            if (string.IsNullOrWhiteSpace(idAttr?.S))
+                continue;
+
+            entries.Add(new RetryTimeSheetEntry
+            {
+                Id = idAttr.S,
+                MemberId = memberIdAttr?.S ?? string.Empty,
+                Email = emailAttr?.S ?? string.Empty,
+                Year = int.TryParse(yearAttr?.N, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year) ? year : 0,
+                Period = int.TryParse(periodAttr?.N, NumberStyles.Integer, CultureInfo.InvariantCulture, out var period) ? period : 0,
+                ErrorMessage = errorAttr?.S ?? string.Empty
+            });
+        }
+
+        logger.LogInformation("Loaded {Count} retry timesheet entries.", entries.Count);
+        return entries;
+    }
+
+    public async Task SaveFailedTimeSheetsAsync(
+        IReadOnlyList<FailedTimeSheetEntry> failedEntries,
+        DateTime lastUpdatedAt,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("Saving {Count} failed timesheet entries to DynamoDB (syncType={SyncType}).", failedEntries.Count, SyncTypes.FailedTimeSheets);
+
+        var items = failedEntries.Select(t => new AttributeValue
+        {
+            M = new Dictionary<string, AttributeValue>
+            {
+                [IdAttribute]           = new AttributeValue { S = t.Id },
+                [MemberIdAttribute]     = new AttributeValue { S = t.MemberId },
+                [TimeSheetEmailAttribute] = new AttributeValue { S = t.Email },
+                [YearAttribute]         = new AttributeValue { N = t.Year.ToString(CultureInfo.InvariantCulture) },
+                [PeriodAttribute]       = new AttributeValue { N = t.Period.ToString(CultureInfo.InvariantCulture) },
+                [ErrorMessageAttribute] = new AttributeValue { S = t.ErrorMessage }
+            }
+        }).ToList();
+
+        var updateRequest = new UpdateItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.FailedTimeSheets }
+            },
+            UpdateExpression = "SET #failedTimeSheets = :failedTimeSheets, #lastUpdatedAt = :lastUpdatedAt",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#failedTimeSheets"] = FailedTimeSheetsAttribute,
+                ["#lastUpdatedAt"] = LastUpdatedAtAttribute
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":failedTimeSheets"] = new AttributeValue { L = items },
+                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
+            }
+        };
+
+        await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
+
+        logger.LogInformation("Saved {Count} failed timesheet entries to FailedTimeSheets record, lastUpdatedAt={LastUpdatedAt}.",
+            failedEntries.Count, lastUpdatedAt);
+    }
+
+    public async Task SaveRetryTimeSheetsAsync(
+        IReadOnlyList<RetryTimeSheetEntry> retryEntries,
+        DateTime lastUpdatedAt,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("Saving {Count} retry timesheet entries to DynamoDB (syncType={SyncType}).", retryEntries.Count, SyncTypes.RetryTimeSheets);
+
+        var items = retryEntries.Select(t => new AttributeValue
+        {
+            M = new Dictionary<string, AttributeValue>
+            {
+                [IdAttribute]           = new AttributeValue { S = t.Id },
+                [MemberIdAttribute]     = new AttributeValue { S = t.MemberId },
+                [TimeSheetEmailAttribute] = new AttributeValue { S = t.Email },
+                [YearAttribute]         = new AttributeValue { N = t.Year.ToString(CultureInfo.InvariantCulture) },
+                [PeriodAttribute]       = new AttributeValue { N = t.Period.ToString(CultureInfo.InvariantCulture) },
+                [ErrorMessageAttribute] = new AttributeValue { S = t.ErrorMessage }
+            }
+        }).ToList();
+
+        var updateRequest = new UpdateItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                [KeyAttribute] = new AttributeValue { S = SyncTypes.RetryTimeSheets }
+            },
+            UpdateExpression = "SET #retryTimeSheets = :retryTimeSheets, #lastUpdatedAt = :lastUpdatedAt",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#retryTimeSheets"] = RetryTimeSheetsAttribute,
+                ["#lastUpdatedAt"] = LastUpdatedAtAttribute
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":retryTimeSheets"] = new AttributeValue { L = items },
+                [":lastUpdatedAt"] = new AttributeValue { S = lastUpdatedAt.ToString("o") }
+            }
+        };
+
+        await dynamoDb.UpdateItemAsync(updateRequest, cancellationToken);
+
+        logger.LogInformation("Saved {Count} retry timesheet entries to RetryTimeSheets record, lastUpdatedAt={LastUpdatedAt}.",
+            retryEntries.Count, lastUpdatedAt);
     }
 }

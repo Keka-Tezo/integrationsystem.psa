@@ -29,6 +29,15 @@ public interface ISyncStateService
     Task SaveFailedCompaniesAsync(IReadOnlyList<FailedCompanyEntry> failedEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Overwrites the <c>failedTimeSheets</c> attribute on the <c>FailedTimeSheets</c> record with the latest failed timesheet entries.
+    /// Pass an empty list to clear all failures after a clean run.
+    /// </summary>
+    Task SaveFailedTimeSheetsAsync(IReadOnlyList<FailedTimeSheetEntry> failedEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads failed timesheets from the <c>FailedTimeSheets</c> record.</summary>
+    Task<IReadOnlyList<FailedTimeSheetEntry>> GetFailedTimeSheetsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Overwrites the <c>companies</c> attribute on the <c>RetryCompanies</c> record with companies that timed out this run.
     /// Pass an empty list to clear after a clean run.
     /// </summary>
@@ -45,6 +54,18 @@ public interface ISyncStateService
     /// Pass an empty list to clear after a clean run.
     /// </summary>
     Task SaveRetryProjectsAsync(IReadOnlyList<RetryProjectEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Overwrites the <c>timeSheets</c> attribute on the <c>RetryTimeSheets</c> record with timesheets that timed out this run.
+    /// Pass an empty list to clear after a clean run.
+    /// </summary>
+    Task SaveRetryTimeSheetsAsync(IReadOnlyList<RetryTimeSheetEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads retry timesheets from the <c>RetryTimeSheets</c> record.
+    /// Each entry includes timesheet id and context for retry processing.
+    /// </summary>
+    Task<IReadOnlyList<RetryTimeSheetEntry>> GetRetryTimeSheetsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Overwrites the <c>summary</c> attribute on the <c>Company</c> record with the latest run counts.

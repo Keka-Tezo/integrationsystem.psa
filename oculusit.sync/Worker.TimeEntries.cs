@@ -1,11 +1,13 @@
+using oculusit.sync.connectwise.modules;
 using oculusit.sync.core.models;
+using Polly.Timeout;
 using System.Globalization;
 
 namespace oculusit.sync;
 
 public sealed partial class Worker
 {
-    private async Task SyncTimeSheetAsync(CancellationToken stoppingToken)
+    private async Task SyncTimeSheetAsync(IReadOnlyList<string> retryTimeSheetIds, CancellationToken stoppingToken)
     {
         var timeSheetState = await syncStateService.GetAsync(SyncTypes.TimeSheets, stoppingToken);
 
@@ -35,17 +37,39 @@ public sealed partial class Worker
         }
 
         var timesheets = await connectWiseTimesheetService.GetTimesheetsSinceAsync(lastUpdatedSince, stoppingToken);
+        var retryTimesheets = new List<ConnectWiseTimesheet>();
+
+        foreach (var retryTimeSheetId in retryTimeSheetIds)
+        {
+            if (!int.TryParse(retryTimeSheetId, out var retryTimesheetId) || retryTimesheetId <= 0)
+                continue;
+
+            var retryTimesheet = await connectWiseTimesheetService.GetTimesheetByIdAsync(retryTimesheetId, stoppingToken);
+            if (retryTimesheet is not null)
+                retryTimesheets.Add(retryTimesheet);
+        }
+
+        var allTimesheets = timesheets
+            .Concat(retryTimesheets)
+            .GroupBy(t => t.Id)
+            .Select(g => g.Last())
+            .OrderBy(t => t.LastUpdated ?? DateTime.MinValue)
+            .Distinct()
+            .ToList();
 
         logger.LogInformation(
-            "TimeSheet sync fetched {Count} timesheet(s) updated after {LastUpdatedSince:o}.",
+            "TimeSheet sync fetched {Count} timesheet(s) updated after {LastUpdatedSince:o} and loaded {RetryCount} retry timesheet(s).",
             timesheets.Count,
-            lastUpdatedSince);
+            lastUpdatedSince,
+            retryTimesheets.Count);
 
-        if (timesheets.Count == 0)
+        if (allTimesheets.Count == 0)
             return;
 
+        var succeededTimeSheetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // Group timesheets by member — one DB lookup per member, not per timesheet
-        var timesheetsByMember = timesheets
+        var timesheetsByMember = allTimesheets
             .Where(t => t.Member is not null && t.Member.Id > 0)
             .GroupBy(t => t.Member!.Id.ToString(CultureInfo.InvariantCulture), StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
@@ -53,11 +77,13 @@ public sealed partial class Worker
 
         logger.LogInformation(
             "Processing {TimesheetCount} timesheet(s) across {MemberCount} unique member(s).",
-            timesheets.Count, timesheetsByMember.Count);
+            allTimesheets.Count, timesheetsByMember.Count);
 
         var totalPosted  = 0;
         var totalSkipped = 0;
         var missingCount = 0;
+        var failedTimeSheets = new List<FailedTimeSheetEntry>();
+        var retryTimeSheetEntries = new List<RetryTimeSheetEntry>();
 
         foreach (var memberGroup in timesheetsByMember)
         {
@@ -72,7 +98,19 @@ public sealed partial class Worker
                     "Member exists in ConnectWise but has no employee checkpoint record.",
                     memberId, memberGroup.Count());
 
-                // TODO: handle missing employee record (create on the fly, alert, etc.)
+                foreach (var timesheet in memberGroup)
+                {
+                    failedTimeSheets.Add(new FailedTimeSheetEntry
+                    {
+                        Id = timesheet.Id.ToString(CultureInfo.InvariantCulture),
+                        MemberId = memberId,
+                        Email = string.Empty,
+                        Year = timesheet.Year,
+                        Period = timesheet.Period,
+                        ErrorMessage = "Member checkpoint record not found."
+                    });
+                }
+
                 continue;
             }
 
@@ -116,6 +154,17 @@ public sealed partial class Worker
                             "Timesheet {TimesheetId} (member={MemberId}, year={Year}, period={Period}) has rejection history " +
                             "but re-sync to Keka is not yet supported. Please update this timesheet in Keka manually.",
                             timesheet.Id, memberId, year, period);
+
+                        failedTimeSheets.Add(new FailedTimeSheetEntry
+                        {
+                            Id = timesheet.Id.ToString(CultureInfo.InvariantCulture),
+                            MemberId = memberId,
+                            Email = employeeState.Email,
+                            Year = year,
+                            Period = period,
+                            ErrorMessage = "Timesheet has rejection history and cannot be automatically re-synced. Please update this timesheet in Keka manually."
+                        });
+
                         totalSkipped++;
                         continue;
                     }
@@ -130,10 +179,25 @@ public sealed partial class Worker
 
                     var postedCount = await timeEntryOrchestrationService.LogTimeEntriesBatchAsync(
                         timeEntries,
-                    employeeState.Email,
+                        employeeState.Email,
                         stoppingToken);
 
+                    if (postedCount == 0)
+                    {
+                        retryTimeSheetEntries.Add(new RetryTimeSheetEntry
+                        {
+                            Id = timesheet.Id.ToString(),
+                            MemberId = memberId,
+                            Email = employeeState.Email,
+                            Year = timesheet.Year,
+                            Period = timesheet.Period,
+                            ErrorMessage = "Error while resolving project or task for time entries."
+                        });
+                        continue;
+                    }
+
                     totalPosted += postedCount;
+                    succeededTimeSheetIds.Add(timesheet.Id.ToString(CultureInfo.InvariantCulture));
                     memberNewPeriods++;
 
                     // Mark this year/period as synced in the local map
@@ -143,15 +207,39 @@ public sealed partial class Worker
 
                     logger.LogInformation(
                         "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}): fetched {EntryCount} entries, posted {PostedCount} to Keka in a single batch.",
-                        timesheet.Id, memberId, year, period, timeEntries.Count, postedCount);
+                        timesheet.Id, memberId, year, period, timeEntries.Count, timeEntries.Count);
+                }
+                catch (TimeoutRejectedException ex)
+                {
+                    logger.LogWarning(ex,
+                        "Timeout processing timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}).",
+                        timesheet.Id, memberId, timesheet.Year, timesheet.Period);
+
+                    retryTimeSheetEntries.Add(new RetryTimeSheetEntry
+                    {
+                        Id = timesheet.Id.ToString(),
+                        MemberId = memberId,
+                        Email = employeeState.Email,
+                        Year = timesheet.Year,
+                        Period = timesheet.Period,
+                        ErrorMessage = ex.Message
+                    });
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex,
-                        "Error processing timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}). " +
-                        "Exception: {ExceptionMessage}",
+                        "Error processing timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}). Exception: {ExceptionMessage}",
                         timesheet.Id, memberId, timesheet.Year, timesheet.Period, ex.Message);
-                    continue;
+
+                    failedTimeSheets.Add(new FailedTimeSheetEntry
+                    {
+                        Id = timesheet.Id.ToString(),
+                        MemberId = memberId,
+                        Email = employeeState.Email,
+                        Year = timesheet.Year,
+                        Period = timesheet.Period,
+                        ErrorMessage = ex.Message
+                    });
                 }
             }
 
@@ -166,12 +254,15 @@ public sealed partial class Worker
                 }, stoppingToken);
 
                 logger.LogInformation(
-                    "DB updated for member {MemberId}: {NewPeriods} new period(s) added. " +
-                    "Total synced periods across all years: {TotalPeriods}.",
+                    "DB updated for member {MemberId}: {NewPeriods} new period(s) added. Total synced periods across all years: {TotalPeriods}.",
                     memberId, memberNewPeriods,
                     updatedSyncedPeriods.Values.Sum(s => s.Count));
             }
         }
+
+        var allFailedTimeSheets = await GetAllFailedTimeSheetsAsync(succeededTimeSheetIds, failedTimeSheets, stoppingToken);
+        await syncStateService.SaveFailedTimeSheetsAsync(allFailedTimeSheets, lastUpdatedSince, stoppingToken);
+        await syncStateService.SaveRetryTimeSheetsAsync(retryTimeSheetEntries, lastUpdatedSince, stoppingToken);
 
         // Update the TimeSheets checkpoint with the LastUpdated of the final (most recent) timesheet
         // so the next run only fetches timesheets updated after this point
@@ -180,7 +271,7 @@ public sealed partial class Worker
         {
             await syncStateService.SaveAsync(new SyncState
             {
-            SyncType      = SyncTypes.TimeSheets,
+                SyncType      = SyncTypes.TimeSheets,
                 LastUpdatedAt = lastTimesheetUpdatedAt
             }, stoppingToken);
 
@@ -199,6 +290,35 @@ public sealed partial class Worker
             timesheetsByMember.Count, missingCount, totalSkipped, totalPosted);
     }
 
+    private async Task<IReadOnlyList<FailedTimeSheetEntry>> GetAllFailedTimeSheetsAsync(
+        IReadOnlySet<string> succeededTimeSheetIds,
+        IReadOnlyList<FailedTimeSheetEntry> failedEntries,
+        CancellationToken stoppingToken)
+    {
+
+        var failedTimeSheetsFromDb = await syncStateService.GetFailedTimeSheetsAsync(stoppingToken);
+        var mergedFailedTimeSheets = new List<FailedTimeSheetEntry>();
+
+        foreach (var dbFailedTimeSheet in failedTimeSheetsFromDb)
+        {
+            if (string.IsNullOrWhiteSpace(dbFailedTimeSheet.Id))
+                continue;
+
+            if (succeededTimeSheetIds.Contains(dbFailedTimeSheet.Id))
+                continue;
+
+            if (failedEntries.Any(e =>
+                !string.IsNullOrWhiteSpace(e.Id) &&
+                string.Equals(e.Id, dbFailedTimeSheet.Id, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            mergedFailedTimeSheets.Add(dbFailedTimeSheet);
+        }
+
+        mergedFailedTimeSheets.AddRange(failedEntries);
+        return mergedFailedTimeSheets;
+    }
+
     private async Task SyncTimeEntryEmployeesAsync(CancellationToken stoppingToken)
     {
         var connectWiseMembers = await connectWiseMemberService.GetAllMembersAsync(stoppingToken);
@@ -210,7 +330,7 @@ public sealed partial class Worker
 
         var membersToInsert = connectWiseMembers
             .Where(member => member.Id > 0)
-            .Where(member => !existingEmployeeIds.Contains(member.Id.ToString(CultureInfo.InvariantCulture)))
+            .Where(member => !existingEmployeeIds.Contains(member.Id.ToString()))
             .ToList();
 
         foreach (var member in membersToInsert)
@@ -293,5 +413,19 @@ public sealed partial class Worker
         var weekEnd = weekStart.AddDays(7).AddTicks(-1);
 
         return (DateTime.SpecifyKind(weekStart, DateTimeKind.Utc), DateTime.SpecifyKind(weekEnd, DateTimeKind.Utc));
+    }
+
+    private async Task<IReadOnlyList<string>> GetRetryTimeSheetIdsFromSyncStateAsync(CancellationToken stoppingToken)
+    {
+        var retryTimeSheets = await syncStateService.GetRetryTimeSheetsAsync(stoppingToken);
+
+        var candidateTimeSheetIds = retryTimeSheets
+            .Where(e => !string.IsNullOrWhiteSpace(e.Id) && !string.IsNullOrWhiteSpace(e.ErrorMessage))
+            .Select(e => e.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        logger.LogInformation("Found {Count} retry timesheets in RetryTimeSheets SyncState.", candidateTimeSheetIds.Count);
+        return candidateTimeSheetIds;
     }
 }

@@ -120,22 +120,23 @@ public sealed class TimeEntryOrchestrationService(
         CancellationToken cancellationToken = default)
     {
         if (entries is null || entries.Count == 0)
-            return 0;
+            throw new InvalidOperationException($"Skipping batch of time entries because there are 0 entries.");
 
         if (string.IsNullOrWhiteSpace(employeeEmail))
         {
             logger.LogWarning("Skipping batch of {Count} time entries because employee email is empty.", entries.Count);
-            return 0;
+            throw new InvalidOperationException($"Skipping batch of {entries.Count} time entries because employee email is empty.");
         }
 
         // Resolve Keka employee once for the entire batch
-        var kekaEmployee = await kekaEmployeeService.SearchEmployeeByEmailAsync(employeeEmail.Trim(), cancellationToken);
+        var kekaEmployee = await kekaEmployeeService.SearchEmployeeByEmailAsync("swastidipa.m@tezo.com", cancellationToken);
         if (kekaEmployee is null || string.IsNullOrWhiteSpace(kekaEmployee.Id))
         {
             logger.LogWarning(
                 "Skipping batch of {Count} time entries because Keka employee was not found for email {Email}.",
-                entries.Count, employeeEmail);
-            return 0;
+            entries.Count, employeeEmail);
+            throw new InvalidOperationException(
+                $"Keka employee was not found for email {employeeEmail}. Cannot process batch of {entries.Count} time entries.");
         }
 
         var batchRequest = new KekaTimesheetEntryBatchRequest();
@@ -145,7 +146,7 @@ public sealed class TimeEntryOrchestrationService(
         {
             if (!TryResolveMinutes(entry, out var minutes) || minutes <= 0)
             {
-                logger.LogWarning("Skipping time entry {TimeEntryId} in batch — minutes could not be resolved.", entry.Id);
+                logger.LogWarning("Skipping time entries {TimeEntryId} in batch — minutes could not be resolved.", entry.Id);
                 continue;
             }
 
@@ -153,7 +154,7 @@ public sealed class TimeEntryOrchestrationService(
             if (kekaProject is null)
             {
                 logger.LogWarning("Skipping time entry {TimeEntryId} in batch — Keka project could not be resolved.", entry.Id);
-                continue;
+                return 0;
             }
 
             var taskName = ResolveTaskName(entry.BillableOption, entry.ChargeToType);
@@ -162,7 +163,7 @@ public sealed class TimeEntryOrchestrationService(
                 logger.LogWarning(
                     "Skipping time entry {TimeEntryId} in batch — chargeToType {ChargeToType} is not supported.",
                     entry.Id, entry.ChargeToType);
-                continue;
+                throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch — chargeToType {entry.ChargeToType} is not supported.");
             }
 
             var taskId = await ResolveOrCreateTaskIdAsync(kekaProject, taskName, entry.TimeStart, cancellationToken);
@@ -171,7 +172,7 @@ public sealed class TimeEntryOrchestrationService(
                 logger.LogWarning(
                     "Skipping time entry {TimeEntryId} in batch — task {TaskName} could not be resolved or created.",
                     entry.Id, taskName);
-                continue;
+                return 0;
             }
 
             // Ensure allocation once per unique project in this batch
@@ -188,8 +189,8 @@ public sealed class TimeEntryOrchestrationService(
                 NumberOfMinutes  = minutes,
                 Date             = normalizedStart.Date,
                 Comment          = string.IsNullOrWhiteSpace(entry.Notes)
-                                       ? $"CW TimeEntry {entry.Id}"
-                                       : $"CW TimeEntry {entry.Id} - {entry.Notes}",
+                                        ? $"CW TimeEntry {entry.Id}"
+                                        : $"CW TimeEntry {entry.Id} - {entry.Notes}",
                 StartTime        = ToKekaTimeInt(normalizedStart),
                 EndTime          = ToKekaTimeInt(normalizedEnd)
             });
@@ -198,7 +199,7 @@ public sealed class TimeEntryOrchestrationService(
         if (batchRequest.Count == 0)
         {
             logger.LogWarning("Batch for employee {Email} resolved to 0 valid entries — nothing posted to Keka.", employeeEmail);
-            return 0;
+            throw new InvalidOperationException($"Batch for employee {employeeEmail} resolved to 0 valid entries — nothing posted to Keka.");
         }
 
         await kekaTimesheetEntryService.CreateTimesheetEntryAsync(kekaEmployee.Id, batchRequest, cancellationToken);
@@ -310,10 +311,13 @@ public sealed class TimeEntryOrchestrationService(
                 ?.Id;
 
             if (string.IsNullOrWhiteSpace(billingRoleId))
+            {
                 logger.LogWarning(
                     "No Keka billing role found matching department '{Department}' for employee {EmployeeId}.",
                     departmentName,
                     kekaEmployee.Id);
+                throw new InvalidOperationException($"No Keka billing role found matching department '{departmentName}' for employee {kekaEmployee.Id}.");
+            }
         }
         else
         {
@@ -321,6 +325,7 @@ public sealed class TimeEntryOrchestrationService(
                 "Employee {EmployeeId} has no department group (groupType={GroupType}). Billing role will not be set on allocation.",
                 kekaEmployee.Id,
                 DepartmentGroupType);
+            throw new InvalidOperationException($"Employee {kekaEmployee.Id} has no department group (groupType={DepartmentGroupType}). Billing role will not be set on allocation.");
         }
 
         if (string.IsNullOrWhiteSpace(billingRoleId))
@@ -346,7 +351,16 @@ public sealed class TimeEntryOrchestrationService(
                 : KekaProjectAllocationBillingType.NonBillable
         };
 
-        await kekaProjectService.CreateProjectAllocationAsync(kekaProject.Id, allocationRequest, cancellationToken);
+        var projectAllocationId = await kekaProjectService.CreateProjectAllocationAsync(kekaProject.Id, allocationRequest, cancellationToken);
+
+        if(string.IsNullOrWhiteSpace(projectAllocationId))
+        {
+            logger.LogWarning(
+                "Failed to create project allocation for employee {EmployeeId} on Keka project {ProjectId}.",
+                kekaEmployee.Id,
+                kekaProject.Id);
+            throw new InvalidOperationException($"Failed to create project allocation for employee {kekaEmployee.Id} on Keka project {kekaProject.Id}.");
+        }
 
         logger.LogInformation(
             "Created project allocation for employee {EmployeeId} on Keka project {ProjectId} with billing role {BillingRoleId}.",

@@ -47,7 +47,7 @@ public sealed class ConnectWiseTimesheetService(
         try
         {
             using var request = CreateRequest(HttpMethod.Get,
-                $"/timesheets/{timesheetId}?fields={TimesheetFields}");
+                $"/time/sheets/{timesheetId}?fields={TimesheetFields}");
             using var response = await HttpClient.SendAsync(request, cancellationToken);
 
             if (!response.IsSuccessStatusCode)

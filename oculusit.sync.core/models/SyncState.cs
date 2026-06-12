@@ -32,6 +32,9 @@ public sealed class SyncState
     /// <summary>Companies that failed to sync during the most recent run.</summary>
     public IReadOnlyList<FailedCompanyEntry> FailedCompanies { get; init; } = [];
 
+    /// <summary>Timesheets that failed to sync during the most recent run because of a non-timeout error.</summary>
+    public IReadOnlyList<FailedTimeSheetEntry> FailedTimeSheets { get; init; } = [];
+
     /// <summary>Project status entries — full replace on every run.</summary>
     public IReadOnlyList<ProjectStatusEntry> ProjectStatuses { get; init; } = [];
 
@@ -43,6 +46,9 @@ public sealed class SyncState
 
     /// <summary>Run-level summary for the Project sync — total processed, succeeded, and failed.</summary>
     public ProjectSyncSummary? ProjectSummary { get; init; }
+
+    /// <summary>Timesheets that timed out during the most recent run and should be retried.</summary>
+    public IReadOnlyList<RetryTimeSheetEntry> RetryTimeSheets { get; init; } = [];
 
     /// <summary>UTC timestamp of the last successful sync completion.</summary>
     public DateTime? LastUpdatedAt { get; init; }
@@ -171,6 +177,17 @@ public sealed class FailedCompanyEntry
     public string ErrorMessage { get; init; } = string.Empty;
 }
 
+/// <summary>Records a ConnectWise timesheet that failed to sync to Keka.</summary>
+public sealed class FailedTimeSheetEntry
+{
+    public string Id { get; init; } = string.Empty;
+    public string MemberId { get; init; } = string.Empty;
+    public string Email { get; init; } = string.Empty;
+    public int Year { get; init; }
+    public int Period { get; init; }
+    public string ErrorMessage { get; init; } = string.Empty;
+}
+
 /// <summary>
 /// Records a ConnectWise company that timed out during sync.
 /// Stored under the <c>RetryCompanies</c> syncType so it can be retried on the next run.
@@ -200,6 +217,17 @@ public sealed class RetryProjectEntry
     public string Name { get; init; } = string.Empty;
 
     /// <summary>Timeout message captured from the exception.</summary>
+    public string ErrorMessage { get; init; } = string.Empty;
+}
+
+/// <summary>Records a ConnectWise timesheet that timed out during sync and should be retried.</summary>
+public sealed class RetryTimeSheetEntry
+{
+    public string Id { get; init; } = string.Empty;
+    public string MemberId { get; init; } = string.Empty;
+    public string Email { get; init; } = string.Empty;
+    public int Year { get; init; }
+    public int Period { get; init; }
     public string ErrorMessage { get; init; } = string.Empty;
 }
 
