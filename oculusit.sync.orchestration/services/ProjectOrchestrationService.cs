@@ -341,6 +341,12 @@ public sealed class ProjectOrchestrationService(
                         "Incremental: Updated Keka project {KekaProjectId} for ConnectWise project {ProjectId} - {ProjectName}.",
                         existingKekaProjectId, project.Id, project.Name);
                     updated++;
+                    newEntries.Add(new SyncedProjectEntry
+                    {
+                        Id            = projectIdStr,
+                        KekaClientId  = kekaClientId,
+                        KekaProjectId = existingKekaProjectId
+                    });
                 }
                 else
                 {

@@ -131,7 +131,6 @@ public sealed class CompanyOrchestrationService(
         return await ProcessCompaniesAsync(
             companies,
             kekaClientIdByCompanyId,
-            includeUpdatedEntriesInResult: true,
             syncLabel: "Full",
             cancellationToken: cancellationToken);
     }
@@ -177,7 +176,6 @@ public sealed class CompanyOrchestrationService(
         return await ProcessCompaniesAsync(
             mergedCompanies,
             kekaIdByCompanyId,
-            includeUpdatedEntriesInResult: false,
             syncLabel: "Incremental",
             cancellationToken: cancellationToken);
     }
@@ -198,7 +196,6 @@ public sealed class CompanyOrchestrationService(
     private async Task<CompanySyncResult> ProcessCompaniesAsync(
         IReadOnlyList<ConnectWiseCompany> companies,
         IReadOnlyDictionary<string, string> kekaClientIdByCompanyId,
-        bool includeUpdatedEntriesInResult,
         string syncLabel,
         CancellationToken cancellationToken)
     {
@@ -289,15 +286,12 @@ public sealed class CompanyOrchestrationService(
                         });
                     }
 
-                    if (includeUpdatedEntriesInResult)
+                    syncedEntries.Add(new SyncedCompanyEntry
                     {
-                        syncedEntries.Add(new SyncedCompanyEntry
-                        {
-                            Id = companyId,
-                            ClientId = kekaClientId,
-                            DateEntered = companyDateEntered
-                        });
-                    }
+                        Id = companyId,
+                        ClientId = kekaClientId,
+                        DateEntered = companyDateEntered
+                    });
                 }
             }
             catch (TimeoutRejectedException tex)
