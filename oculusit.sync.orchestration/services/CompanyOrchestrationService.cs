@@ -226,6 +226,12 @@ public sealed class CompanyOrchestrationService(
                             ErrorMessage = tex.Message
                         });
                     }
+                    catch(Exception ex)
+                    {
+                        logger.LogError(ex,
+                            "{SyncLabel}: Error creating default project for ConnectWise company {CompanyId} and Keka client {ClientId}.",
+                            syncLabel, company.Id, kekaClientId);
+                    }
 
                     syncedEntries.Add(new SyncedCompanyEntry
                     {

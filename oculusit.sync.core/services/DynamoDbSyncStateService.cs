@@ -39,7 +39,6 @@ public sealed class DynamoDbSyncStateService(
     private const string KekaProjectIdAttribute    = "kekaProjectId";
     private const string KekaProjectCodeAttribute  = "kekaProjectCode";
     private const string KekaProjectNameAttribute  = "kekaProjectName";
-    private const string FailedTaskKeysAttribute   = "failedTaskKeys";
     private const string NameAttribute             = "name";
     private const string ErrorMessageAttribute     = "errorMessage";
     private const string ValueAttribute            = "value";
@@ -195,16 +194,11 @@ public sealed class DynamoDbSyncStateService(
                 entry.M.TryGetValue(KekaClientIdAttribute, out var kekaClientIdAttr);
                 entry.M.TryGetValue(KekaProjectIdAttribute, out var kekaProjectIdAttr);
 
-                var failedTaskKeys = new List<string>();
-                if (entry.M.TryGetValue(FailedTaskKeysAttribute, out var failedTaskKeysAttr) && failedTaskKeysAttr.SS is { Count: > 0 })
-                    failedTaskKeys.AddRange(failedTaskKeysAttr.SS);
-
                 projects.Add(new SyncedProjectEntry
                 {
-                    Id             = idAttr?.S ?? string.Empty,
-                    KekaClientId   = kekaClientIdAttr?.S,
-                    KekaProjectId  = kekaProjectIdAttr?.S,
-                    FailedTaskKeys = failedTaskKeys
+                    Id            = idAttr?.S ?? string.Empty,
+                    KekaClientId  = kekaClientIdAttr?.S,
+                    KekaProjectId = kekaProjectIdAttr?.S
                 });
             }
         }
@@ -300,17 +294,15 @@ public sealed class DynamoDbSyncStateService(
             {
                 L = state.Projects.Select(p =>
                 {
-                    var m = new Dictionary<string, AttributeValue>
+                    return new AttributeValue
                     {
-                        [IdAttribute]            = new AttributeValue { S = p.Id },
-                        [KekaClientIdAttribute]  = new AttributeValue { S = p.KekaClientId ?? string.Empty },
-                        [KekaProjectIdAttribute] = new AttributeValue { S = p.KekaProjectId ?? string.Empty }
+                        M = new Dictionary<string, AttributeValue>
+                        {
+                            [IdAttribute]            = new AttributeValue { S = p.Id },
+                            [KekaClientIdAttribute]  = new AttributeValue { S = p.KekaClientId ?? string.Empty },
+                            [KekaProjectIdAttribute] = new AttributeValue { S = p.KekaProjectId ?? string.Empty }
+                        }
                     };
-
-                    if (p.FailedTaskKeys.Count > 0)
-                        m[FailedTaskKeysAttribute] = new AttributeValue { SS = [.. p.FailedTaskKeys] };
-
-                    return new AttributeValue { M = m };
                 }).ToList()
             };
         }
@@ -415,19 +407,14 @@ public sealed class DynamoDbSyncStateService(
     {
         logger.LogDebug("Appending {Count} project entries to DynamoDB for syncType={SyncType}.", newEntries.Count, syncType);
 
-        var newItems = newEntries.Select(p =>
+        var newItems = newEntries.Select(p => new AttributeValue
         {
-            var m = new Dictionary<string, AttributeValue>
+            M = new Dictionary<string, AttributeValue>
             {
                 [IdAttribute]            = new AttributeValue { S = p.Id },
                 [KekaClientIdAttribute]  = new AttributeValue { S = p.KekaClientId ?? string.Empty },
                 [KekaProjectIdAttribute] = new AttributeValue { S = p.KekaProjectId ?? string.Empty }
-            };
-
-            if (p.FailedTaskKeys.Count > 0)
-                m[FailedTaskKeysAttribute] = new AttributeValue { SS = [.. p.FailedTaskKeys] };
-
-            return new AttributeValue { M = m };
+            }
         }).ToList();
 
         var updateRequest = new UpdateItemRequest
