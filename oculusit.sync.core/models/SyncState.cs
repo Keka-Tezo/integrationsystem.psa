@@ -137,12 +137,6 @@ public sealed class SyncedProjectEntry
     /// <summary>Keka project ID.</summary>
     public string? KekaProjectId { get; init; }
 
-    /// <summary>
-    /// Short-code keys of tasks that failed to be created on the last run.
-    /// These will be retried on the next update pass via the Keka API.
-    /// Empty means all 6 tasks were successfully provisioned.
-    /// </summary>
-    public List<string> FailedTaskKeys { get; init; } = [];
 }
 
 /// <summary>Records a ConnectWise project that failed to sync to Keka.</summary>

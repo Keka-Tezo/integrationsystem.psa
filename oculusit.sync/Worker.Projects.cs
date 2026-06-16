@@ -91,14 +91,10 @@ public sealed partial class Worker
             var result        = await projectOrchestration.SyncProjectsAsync(companySyncState, projectStatusSyncState, allEmployeesState, stoppingToken);
             var lastUpdatedAt  = result.LastRecordUpdatedAt ?? syncStartedAt;
 
-            await syncStateService.SaveAsync(new SyncState
-            {
-                SyncType      = SyncTypes.Project,
-                Projects      = result.SyncedEntries,
-                LastUpdatedAt = lastUpdatedAt
-            }, stoppingToken);
+            await syncStateService.UpsertProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
 
-            await syncStateService.SaveFailedProjectsAsync(result.FailedEntries, lastUpdatedAt, stoppingToken);
+            var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
+            await syncStateService.SaveFailedProjectsAsync(failedProjects, lastUpdatedAt, stoppingToken);
             await syncStateService.SaveRetryProjectsAsync(result.RetryEntries, lastUpdatedAt, stoppingToken);
 
             await syncStateService.SaveProjectSummaryAsync(
@@ -120,7 +116,7 @@ public sealed partial class Worker
             var result        = await projectOrchestration.SyncProjectsIncrementalAsync(projectSyncState, companySyncState, projectStatusSyncState, allEmployeesState, retryProjectIds, stoppingToken);
             var lastUpdatedAt  = result.LastRecordUpdatedAt ?? syncStartedAt;
 
-            await syncStateService.AppendProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
+            await syncStateService.UpsertProjectsAsync(SyncTypes.Project, result.SyncedEntries, lastUpdatedAt, stoppingToken);
 
             var failedProjects = await GetAllFailedProjectsAsync(result.SyncedEntries, result.FailedEntries, stoppingToken);
             await syncStateService.SaveFailedProjectsAsync(failedProjects, lastUpdatedAt, stoppingToken);

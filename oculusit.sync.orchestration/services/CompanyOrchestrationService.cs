@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using oculusit.sync.connectwise.modules;
 using oculusit.sync.connectwise.services;
+using oculusit.sync.core.interfaces;
 using oculusit.sync.core.models;
 using oculusit.sync.keka.modules;
 using oculusit.sync.keka.services;
@@ -15,6 +16,7 @@ public sealed class CompanyOrchestrationService(
     IKekaCurrencyService kekaCurrencyService,
     IKekaProjectService kekaProjectService,
     IKekaEmployeeService kekaEmployeeService,
+    ISyncStateService syncStateService,
     ILogger<CompanyOrchestrationService> logger) : ICompanyOrchestrationService
 {
     private string? defaultProjectManagerEmployeeIdCache = string.Empty;
@@ -108,12 +110,41 @@ public sealed class CompanyOrchestrationService(
 
         var kekaClientIdByCompanyId = await BuildKekaClientLookupAsync(cancellationToken);
 
+        // Persist existing CW→Keka mappings before processing so that any
+        // companies already mapped in Keka are recorded in DynamoDB upfront.
+        // Only include entries whose CW company ID exists in the current ConnectWise companies list.
+        var cwCompanyIds = companies
+            .Select(c => c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var existingMappedEntries = kekaClientIdByCompanyId
+            .Where(kv => cwCompanyIds.Contains(kv.Key))
+            .Select(kv => new SyncedCompanyEntry { Id = kv.Key, ClientId = kv.Value })
+            .ToList();
+
+        if (existingMappedEntries.Count > 0)
+        {
+            await syncStateService.UpsertCompaniesAsync(SyncTypes.Company, existingMappedEntries, DateTime.UtcNow, cancellationToken);
+
+            logger.LogInformation(
+                "Full sync: pre-populated Company sync state with {Count} existing CW→Keka mappings.",
+                existingMappedEntries.Count);
+        }
+
+        // Full sync: only process companies that already exist in Keka (update only, no create).
+        var mappedCompanies = companies
+            .Where(c => kekaClientIdByCompanyId.ContainsKey(c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+            .ToList();
+
+        logger.LogInformation(
+            "Full sync: {Mapped} of {Total} CW companies have an existing Keka client and will be updated. {Skipped} new companies skipped.",
+            mappedCompanies.Count, companies.Count, companies.Count - mappedCompanies.Count);
+
         return await ProcessCompaniesAsync(
-            companies,
+            mappedCompanies,
             kekaClientIdByCompanyId,
             defaultProject,
-            includeUpdatedEntriesInResult: true,
-            syncLabel: "Full",  
+            syncLabel: "Full", 
             cancellationToken: cancellationToken);
     }
 
@@ -160,7 +191,6 @@ public sealed class CompanyOrchestrationService(
             mergedCompanies,
             kekaIdByCompanyId,
             defaultProject,
-            includeUpdatedEntriesInResult: false,
             syncLabel: "Incremental",
             cancellationToken: cancellationToken);
     }
@@ -182,7 +212,6 @@ public sealed class CompanyOrchestrationService(
         IReadOnlyList<ConnectWiseCompany> companies,
         IReadOnlyDictionary<string, string> kekaClientIdByCompanyId,
         DefaultProjectEntry? defaultProject,
-        bool includeUpdatedEntriesInResult,
         string syncLabel,
         CancellationToken cancellationToken)
     {
@@ -244,6 +273,12 @@ public sealed class CompanyOrchestrationService(
                             ErrorMessage = tex.Message
                         });
                     }
+                    catch(Exception ex)
+                    {
+                        logger.LogError(ex,
+                            "{SyncLabel}: Error creating default project for ConnectWise company {CompanyId} and Keka client {ClientId}.",
+                            syncLabel, company.Id, kekaClientId);
+                    }
 
                     syncedEntries.Add(new SyncedCompanyEntry
                     {
@@ -277,16 +312,19 @@ public sealed class CompanyOrchestrationService(
                             ErrorMessage = tex.Message
                         });
                     }
-
-                    if (includeUpdatedEntriesInResult)
+                    catch (Exception ex)
                     {
-                        syncedEntries.Add(new SyncedCompanyEntry
-                        {
-                            Id = companyId,
-                            ClientId = kekaClientId,
-                            DateEntered = companyDateEntered
-                        });
+                        logger.LogError(ex,
+                            "{SyncLabel}: Error creating default project for ConnectWise company {CompanyId} and Keka client {ClientId}.",
+                            syncLabel, company.Id, kekaClientId);
                     }
+
+                    syncedEntries.Add(new SyncedCompanyEntry
+                    {
+                        Id = companyId,
+                        ClientId = kekaClientId,
+                        DateEntered = companyDateEntered
+                    });
                 }
             }
             catch (TimeoutRejectedException tex)
