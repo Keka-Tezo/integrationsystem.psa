@@ -13,8 +13,11 @@ namespace oculusit.sync.orchestration.services;
 public sealed class ProjectOrchestrationService(
     IConnectWiseProjectService connectWiseProjectService,
     IKekaProjectService kekaProjectService,
+    IKekaEmployeeService kekaEmployeeService,
     ILogger<ProjectOrchestrationService> logger) : IProjectOrchestrationService
 {
+    private readonly Dictionary<string, KekaEmployee?> employeeCache = new();
+
     public async Task<IReadOnlyList<InitialProjectEntry>> BuildInitialProjectSnapshotAsync(CancellationToken cancellationToken = default)
     {
         var cwProjects = await connectWiseProjectService.GetAllProjectsAsync(cancellationToken);
@@ -108,6 +111,7 @@ public sealed class ProjectOrchestrationService(
     public async Task<ProjectSyncResult> SyncProjectsAsync(
         SyncState companySyncState,
         SyncState? projectStatusSyncState,
+        IReadOnlyList<TimeEntryEmployeeDedupeState> allEmployeesState,
         CancellationToken cancellationToken = default)
     {
         var projects = await connectWiseProjectService.GetAllProjectsAsync(cancellationToken);
@@ -168,10 +172,25 @@ public sealed class ProjectOrchestrationService(
                     continue;
                 }
 
+                var projectManager = allEmployeesState.FirstOrDefault(e => e.EmployeeId == project.Manager?.Id.ToString());
+                KekaEmployee? kekaEmployee = null;
+
+                if (projectManager is not null)
+                {
+                    kekaEmployee = await GetKekaEmployeeAsync(projectManager.Email.Trim(), cancellationToken);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "TimeEntries#{MemberId} not found in DB. " +
+                        "Project manager member exists in ConnectWise but has no employee checkpoint record.",
+                        project.Manager?.Id);
+                }
+
                 if (!kekaProjectsByCode.TryGetValue(project.Id.ToString(), out var existing))
                 {
                     // New project — create in Keka then provision all 6 standard tasks.
-                    var request = KekaProjectMapper.MapToKekaProjectRequest(project, kekaClientId, statusMapping);
+                    var request = KekaProjectMapper.MapToKekaProjectRequest(project, kekaClientId, kekaEmployee, statusMapping);
                     var kekaProjectId = await kekaProjectService.CreateProjectAsync(request, cancellationToken);
                     logger.LogInformation("Created Keka project {KekaProjectId} for ConnectWise project {ProjectId} - {ProjectName}.",
                         kekaProjectId, project.Id, project.Name);
@@ -193,7 +212,7 @@ public sealed class ProjectOrchestrationService(
                 else
                 {
                     // Project already exists in Keka — update it.
-                    var updateRequest = KekaProjectMapper.MapToKekaProjectUpdateRequest(project, statusMapping);
+                    var updateRequest = KekaProjectMapper.MapToKekaProjectUpdateRequest(project, kekaEmployee, statusMapping);
                     await kekaProjectService.UpdateProjectAsync(existing.Id, updateRequest, cancellationToken);
                     logger.LogInformation("Updated Keka project {KekaProjectId} for ConnectWise project {ProjectId} - {ProjectName}.",
                         existing.Id, project.Id, project.Name);
@@ -260,6 +279,7 @@ public sealed class ProjectOrchestrationService(
         SyncState projectSyncState,
         SyncState companySyncState,
         SyncState? projectStatusSyncState,
+        IReadOnlyList<TimeEntryEmployeeDedupeState> allEmployeesState,
         IReadOnlyList<string> retryProjectIds,
         CancellationToken cancellationToken = default)
     {
@@ -334,13 +354,28 @@ public sealed class ProjectOrchestrationService(
                     continue;
                 }
 
+                var projectManager = allEmployeesState.FirstOrDefault(e => e.EmployeeId == project.Manager?.Id.ToString());
+                KekaEmployee? kekaEmployee = null;
+
+                if (projectManager is not null) 
+                {
+                    kekaEmployee = await GetKekaEmployeeAsync(projectManager.Email.Trim(), cancellationToken);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "TimeEntries#{MemberId} not found in DB. " +
+                        "Project manager member exists in ConnectWise but has no employee checkpoint record.",
+                        project.Manager?.Id);
+                }
+
                 var projectIdStr = project.Id.ToString();
 
                 if (knownProjects.TryGetValue(projectIdStr, out var existingKekaProjectId)
                     && !string.IsNullOrEmpty(existingKekaProjectId))
                 {
                     // Known project — update in Keka.
-                    var updateRequest = KekaProjectMapper.MapToKekaProjectUpdateRequest(project, statusMapping);
+                    var updateRequest = KekaProjectMapper.MapToKekaProjectUpdateRequest(project, kekaEmployee, statusMapping);
                     await kekaProjectService.UpdateProjectAsync(existingKekaProjectId, updateRequest, cancellationToken);
                     logger.LogInformation(
                         "Incremental: Updated Keka project {KekaProjectId} for ConnectWise project {ProjectId} - {ProjectName}.",
@@ -356,7 +391,7 @@ public sealed class ProjectOrchestrationService(
                 else
                 {
                     // New project — create in Keka then provision all 6 standard tasks.
-                    var request = KekaProjectMapper.MapToKekaProjectRequest(project, kekaClientId, statusMapping);
+                    var request = KekaProjectMapper.MapToKekaProjectRequest(project, kekaClientId, kekaEmployee, statusMapping);
                     var kekaProjectId = await kekaProjectService.CreateProjectAsync(request, cancellationToken);
                     logger.LogInformation(
                         "Incremental: Created Keka project {KekaProjectId} for ConnectWise project {ProjectId} - {ProjectName}.",
@@ -437,13 +472,13 @@ public sealed class ProjectOrchestrationService(
         string cwProjectId,
         string cwProjectName,
         DateTime startDate,
-        DateTime endDate,
+        DateTime? endDate,
         IEnumerable<string> keysToCreate,
         bool checkKekaForExistingTasks,
         CancellationToken cancellationToken)
     {
         var taskStartDate = startDate.Date;
-        var taskEndDate = endDate.Date;
+        var taskEndDate = endDate?.Date ?? DateTime.MaxValue;
 
         var definitionsByKey = ProjectTaskDefinitions.ToDictionary(t => t.Key, t => (t.Name, t.BillingType));
 
@@ -514,5 +549,17 @@ public sealed class ProjectOrchestrationService(
                     name, key, cwProjectId, cwProjectName);
             }
         }
+    }
+
+    public async Task<KekaEmployee?> GetKekaEmployeeAsync(string email, CancellationToken cancellationToken)
+    {
+        if (employeeCache.TryGetValue(email, out var employee))
+            return employee;
+
+        employee = await kekaEmployeeService.SearchEmployeeByEmailAsync(email, cancellationToken);
+
+        employeeCache[email] = employee;
+
+        return employee;
     }
 }

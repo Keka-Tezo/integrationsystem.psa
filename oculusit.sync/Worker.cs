@@ -33,12 +33,12 @@ public sealed partial class Worker(
             {
                 await syncStateService.EnsureDefaultProjectAsync(stoppingToken);
                 await SyncProjectStatusAsync(syncStartedAt, stoppingToken);
+                await SyncTimeEntryEmployeesAsync(stoppingToken);
 
                 var retryCompanyIds = await GetRetryCompanyIdsFromSyncStateAsync(stoppingToken);
                 await SyncCompaniesAsync(syncStartedAt, retryCompanyIds, stoppingToken);
                 var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
                 await SyncProjectsAsync(syncStartedAt, retryProjectIds, stoppingToken);
-                await SyncTimeEntryEmployeesAsync(stoppingToken);
                 await SyncTimeSheetAsync(stoppingToken);
             }
             else
