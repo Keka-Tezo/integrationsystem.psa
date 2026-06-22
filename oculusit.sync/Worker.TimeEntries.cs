@@ -82,7 +82,6 @@ public sealed partial class Worker
         var totalPosted  = 0;
         var totalSkipped = 0;
         var missingCount = 0;
-        var failedTimeSheets = new List<FailedTimeSheetEntry>();
         var retryTimeSheetEntries = new List<RetryTimeSheetEntry>();
 
         foreach (var memberGroup in timesheetsByMember)
@@ -100,14 +99,14 @@ public sealed partial class Worker
 
                 foreach (var timesheet in memberGroup)
                 {
-                    failedTimeSheets.Add(new FailedTimeSheetEntry
+                    retryTimeSheetEntries.Add(new RetryTimeSheetEntry
                     {
                         Id = timesheet.Id.ToString(CultureInfo.InvariantCulture),
                         MemberId = memberId,
                         Email = string.Empty,
                         Year = timesheet.Year,
                         Period = timesheet.Period,
-                        ErrorMessage = "Member checkpoint record not found."
+                        ErrorMessage = $"TimeEntries#{memberId} not found in DB. Member exists in ConnectWise but has no employee checkpoint record."
                     });
                 }
 
@@ -155,7 +154,7 @@ public sealed partial class Worker
                             "but re-sync to Keka is not yet supported. Please update this timesheet in Keka manually.",
                             timesheet.Id, memberId, year, period);
 
-                        failedTimeSheets.Add(new FailedTimeSheetEntry
+                        retryTimeSheetEntries.Add(new RetryTimeSheetEntry
                         {
                             Id = timesheet.Id.ToString(CultureInfo.InvariantCulture),
                             MemberId = memberId,
@@ -182,20 +181,6 @@ public sealed partial class Worker
                         employeeState.Email,
                         stoppingToken);
 
-                    if (postedCount == 0)
-                    {
-                        retryTimeSheetEntries.Add(new RetryTimeSheetEntry
-                        {
-                            Id = timesheet.Id.ToString(),
-                            MemberId = memberId,
-                            Email = employeeState.Email,
-                            Year = timesheet.Year,
-                            Period = timesheet.Period,
-                            ErrorMessage = "Error while resolving project or task for time entries."
-                        });
-                        continue;
-                    }
-
                     totalPosted += postedCount;
                     succeededTimeSheetIds.Add(timesheet.Id.ToString(CultureInfo.InvariantCulture));
                     memberNewPeriods++;
@@ -209,29 +194,13 @@ public sealed partial class Worker
                         "Timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}): fetched {EntryCount} entries, posted {PostedCount} to Keka in a single batch.",
                         timesheet.Id, memberId, year, period, timeEntries.Count, timeEntries.Count);
                 }
-                catch (TimeoutRejectedException ex)
-                {
-                    logger.LogWarning(ex,
-                        "Timeout processing timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}).",
-                        timesheet.Id, memberId, timesheet.Year, timesheet.Period);
-
-                    retryTimeSheetEntries.Add(new RetryTimeSheetEntry
-                    {
-                        Id = timesheet.Id.ToString(),
-                        MemberId = memberId,
-                        Email = employeeState.Email,
-                        Year = timesheet.Year,
-                        Period = timesheet.Period,
-                        ErrorMessage = ex.Message
-                    });
-                }
                 catch (Exception ex)
                 {
                     logger.LogError(ex,
                         "Error processing timesheet {TimesheetId} (member={MemberId}, {Year}/{Period}). Exception: {ExceptionMessage}",
                         timesheet.Id, memberId, timesheet.Year, timesheet.Period, ex.Message);
 
-                    failedTimeSheets.Add(new FailedTimeSheetEntry
+                    retryTimeSheetEntries.Add(new RetryTimeSheetEntry
                     {
                         Id = timesheet.Id.ToString(),
                         MemberId = memberId,
@@ -260,8 +229,6 @@ public sealed partial class Worker
             }
         }
 
-        var allFailedTimeSheets = await GetAllFailedTimeSheetsAsync(succeededTimeSheetIds, failedTimeSheets, stoppingToken);
-        await syncStateService.SaveFailedTimeSheetsAsync(allFailedTimeSheets, lastUpdatedSince, stoppingToken);
         await syncStateService.SaveRetryTimeSheetsAsync(retryTimeSheetEntries, lastUpdatedSince, stoppingToken);
 
         // Update the TimeSheets checkpoint with the LastUpdated of the final (most recent) timesheet
@@ -290,35 +257,6 @@ public sealed partial class Worker
             timesheetsByMember.Count, missingCount, totalSkipped, totalPosted);
     }
 
-    private async Task<IReadOnlyList<FailedTimeSheetEntry>> GetAllFailedTimeSheetsAsync(
-        IReadOnlySet<string> succeededTimeSheetIds,
-        IReadOnlyList<FailedTimeSheetEntry> failedEntries,
-        CancellationToken stoppingToken)
-    {
-
-        var failedTimeSheetsFromDb = await syncStateService.GetFailedTimeSheetsAsync(stoppingToken);
-        var mergedFailedTimeSheets = new List<FailedTimeSheetEntry>();
-
-        foreach (var dbFailedTimeSheet in failedTimeSheetsFromDb)
-        {
-            if (string.IsNullOrWhiteSpace(dbFailedTimeSheet.Id))
-                continue;
-
-            if (succeededTimeSheetIds.Contains(dbFailedTimeSheet.Id))
-                continue;
-
-            if (failedEntries.Any(e =>
-                !string.IsNullOrWhiteSpace(e.Id) &&
-                string.Equals(e.Id, dbFailedTimeSheet.Id, StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            mergedFailedTimeSheets.Add(dbFailedTimeSheet);
-        }
-
-        mergedFailedTimeSheets.AddRange(failedEntries);
-        return mergedFailedTimeSheets;
-    }
-
     private async Task SyncTimeEntryEmployeesAsync(CancellationToken stoppingToken)
     {
         var connectWiseMembers = await connectWiseMemberService.GetAllMembersAsync(stoppingToken);
@@ -330,7 +268,7 @@ public sealed partial class Worker
 
         var membersToInsert = connectWiseMembers
             .Where(member => member.Id > 0)
-            .Where(member => !existingEmployeeIds.Contains(member.Id.ToString()))
+            .Where(member => !existingEmployeeIds.Contains(member.Id.ToString(CultureInfo.InvariantCulture)))
             .ToList();
 
         foreach (var member in membersToInsert)

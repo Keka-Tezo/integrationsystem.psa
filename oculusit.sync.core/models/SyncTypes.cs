@@ -20,9 +20,6 @@ public static class SyncTypes
     /// <summary>Dedicated record that logs all project sync failures with id, name, and error message.</summary>
     public const string FailedProjects = "FailedProjects";
 
-    /// <summary>Dedicated record that logs all timesheet sync failures with context and error message.</summary>
-    public const string FailedTimeSheets = "FailedTimeSheets";
-
     /// <summary>Dedicated record for company transient timeout failures that should be retried on the next run.</summary>
     public const string RetryCompanies = "RetryCompanies";
 

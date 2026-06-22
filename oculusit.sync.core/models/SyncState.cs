@@ -32,9 +32,6 @@ public sealed class SyncState
     /// <summary>Companies that failed to sync during the most recent run.</summary>
     public IReadOnlyList<FailedCompanyEntry> FailedCompanies { get; init; } = [];
 
-    /// <summary>Timesheets that failed to sync during the most recent run because of a non-timeout error.</summary>
-    public IReadOnlyList<FailedTimeSheetEntry> FailedTimeSheets { get; init; } = [];
-
     /// <summary>Project status entries — full replace on every run.</summary>
     public IReadOnlyList<ProjectStatusEntry> ProjectStatuses { get; init; } = [];
 
@@ -174,17 +171,6 @@ public sealed class FailedCompanyEntry
     public string Name { get; init; } = string.Empty;
 
     /// <summary>Exception message that caused the failure.</summary>
-    public string ErrorMessage { get; init; } = string.Empty;
-}
-
-/// <summary>Records a ConnectWise timesheet that failed to sync to Keka.</summary>
-public sealed class FailedTimeSheetEntry
-{
-    public string Id { get; init; } = string.Empty;
-    public string MemberId { get; init; } = string.Empty;
-    public string Email { get; init; } = string.Empty;
-    public int Year { get; init; }
-    public int Period { get; init; }
     public string ErrorMessage { get; init; } = string.Empty;
 }
 

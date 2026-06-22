@@ -119,96 +119,104 @@ public sealed class TimeEntryOrchestrationService(
         string employeeEmail,
         CancellationToken cancellationToken = default)
     {
-        if (entries is null || entries.Count == 0)
-            throw new InvalidOperationException($"Skipping batch of time entries because there are 0 entries.");
-
-        if (string.IsNullOrWhiteSpace(employeeEmail))
+        try
         {
-            logger.LogWarning("Skipping batch of {Count} time entries because employee email is empty.", entries.Count);
-            throw new InvalidOperationException($"Skipping batch of {entries.Count} time entries because employee email is empty.");
-        }
+            if (entries is null || entries.Count == 0)
+                throw new InvalidOperationException($"Skipping batch of time entries because there are 0 entries.");
 
-        // Resolve Keka employee once for the entire batch
-        var kekaEmployee = await kekaEmployeeService.SearchEmployeeByEmailAsync("swastidipa.m@tezo.com", cancellationToken);
-        if (kekaEmployee is null || string.IsNullOrWhiteSpace(kekaEmployee.Id))
-        {
-            logger.LogWarning(
-                "Skipping batch of {Count} time entries because Keka employee was not found for email {Email}.",
-            entries.Count, employeeEmail);
-            throw new InvalidOperationException(
-                $"Keka employee was not found for email {employeeEmail}. Cannot process batch of {entries.Count} time entries.");
-        }
-
-        var batchRequest = new KekaTimesheetEntryBatchRequest();
-        var allocatedProjectIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var entry in entries)
-        {
-            if (!TryResolveMinutes(entry, out var minutes) || minutes <= 0)
+            if (string.IsNullOrWhiteSpace(employeeEmail))
             {
-                logger.LogWarning("Skipping time entries {TimeEntryId} in batch — minutes could not be resolved.", entry.Id);
-                continue;
+                logger.LogWarning("Skipping batch of {Count} time entries because employee email is empty.", entries.Count);
+                throw new InvalidOperationException($"Skipping batch of {entries.Count} time entries because employee email is empty.");
             }
 
-            var kekaProject = await ResolveKekaProjectAsync(entry, cancellationToken);
-            if (kekaProject is null)
-            {
-                logger.LogWarning("Skipping time entry {TimeEntryId} in batch — Keka project could not be resolved.", entry.Id);
-                return 0;
-            }
-
-            var taskName = ResolveTaskName(entry.BillableOption, entry.ChargeToType);
-            if (string.IsNullOrWhiteSpace(taskName))
+            // Resolve Keka employee once for the entire batch
+            var kekaEmployee = await kekaEmployeeService.SearchEmployeeByEmailAsync(employeeEmail.Trim(), cancellationToken);
+            if (kekaEmployee is null || string.IsNullOrWhiteSpace(kekaEmployee.Id))
             {
                 logger.LogWarning(
-                    "Skipping time entry {TimeEntryId} in batch — chargeToType {ChargeToType} is not supported.",
-                    entry.Id, entry.ChargeToType);
-                throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch — chargeToType {entry.ChargeToType} is not supported.");
+                    "Skipping batch of {Count} time entries because Keka employee was not found for email {Email}.",
+                entries.Count, employeeEmail);
+                throw new InvalidOperationException(
+                    $"Keka employee was not found for email {employeeEmail}. Cannot process batch of {entries.Count} time entries.");
             }
 
-            var taskId = await ResolveOrCreateTaskIdAsync(kekaProject, taskName, entry.TimeStart, cancellationToken);
-            if (string.IsNullOrWhiteSpace(taskId))
+            var batchRequest = new KekaTimesheetEntryBatchRequest();
+            var allocatedProjectIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in entries)
             {
-                logger.LogWarning(
-                    "Skipping time entry {TimeEntryId} in batch — task {TaskName} could not be resolved or created.",
-                    entry.Id, taskName);
-                return 0;
-            }
+                if (!TryResolveMinutes(entry, out var minutes) || minutes <= 0)
+                {
+                    logger.LogWarning("Skipping time entry {TimeEntryId} in batch — minutes could not be resolved.", entry.Id);
+                    continue;
+                }
 
-            // Ensure allocation once per unique project in this batch
-            if (allocatedProjectIds.Add(kekaProject.Id))
-                await EnsureProjectAllocationAsync(kekaProject, kekaEmployee, cancellationToken);
+                var kekaProject = await ResolveKekaProjectAsync(entry, cancellationToken);
+                if (kekaProject is null)
+                {
+                    logger.LogWarning("Skipping time entry {TimeEntryId} in batch — Keka project could not be resolved.", entry.Id);
+                    throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch — Keka project could not be resolved.");
+                }
 
-            var normalizedStart = NormalizeUtc(entry.TimeStart) ?? DateTime.UtcNow;
+                var taskName = ResolveTaskName(entry.BillableOption, entry.ChargeToType);
+                if (string.IsNullOrWhiteSpace(taskName))
+                {
+                    logger.LogWarning(
+                        "Skipping time entry {TimeEntryId} in batch — chargeToType {ChargeToType} is not supported.",
+                        entry.Id, entry.ChargeToType);
+                    throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch — chargeToType {entry.ChargeToType} is not supported.");
+                }
+
+                var taskId = await ResolveOrCreateTaskIdAsync(kekaProject, taskName, entry.TimeStart, cancellationToken);
+                if (string.IsNullOrWhiteSpace(taskId))
+                {
+                    logger.LogWarning(
+                        "Skipping time entry {TimeEntryId} in batch — task {TaskName} could not be resolved or created.",
+                        entry.Id, taskName);
+                    throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch — task {taskName} could not be resolved or created.");
+                }
+
+                // Ensure allocation once per unique project in this batch
+                if (allocatedProjectIds.Add(kekaProject.Id))
+                    await EnsureProjectAllocationAsync(kekaProject, kekaEmployee, cancellationToken);
+
+                var normalizedStart = NormalizeUtc(entry.TimeStart) ?? DateTime.UtcNow;
             var normalizedEnd   = NormalizeUtc(entry.TimeEnd)   ?? normalizedStart.AddMinutes(minutes);
 
-            batchRequest.Add(new()
-            {
+                batchRequest.Add(new()
+                {
                 ProjectId        = kekaProject.Id,
                 TaskId           = taskId,
                 NumberOfMinutes  = minutes,
                 Date             = normalizedStart.Date,
                 Comment          = string.IsNullOrWhiteSpace(entry.Notes)
-                                        ? $"CW TimeEntry {entry.Id}"
-                                        : $"CW TimeEntry {entry.Id} - {entry.Notes}",
+                                            ? $"CW TimeEntry {entry.Id}"
+                                            : $"CW TimeEntry {entry.Id} - {entry.Notes}",
                 StartTime        = ToKekaTimeInt(normalizedStart),
                 EndTime          = ToKekaTimeInt(normalizedEnd)
-            });
-        }
+                });
+            }
 
-        if (batchRequest.Count == 0)
+            if (batchRequest.Count == 0)
+            {
+                logger.LogWarning("Batch for employee {Email} resolved to 0 valid entries — nothing posted to Keka.", employeeEmail);
+                throw new InvalidOperationException($"Batch for employee {employeeEmail} resolved to 0 valid entries — nothing posted to Keka.");
+            }
+
+            await kekaTimesheetEntryService.CreateTimesheetEntryAsync(kekaEmployee.Id, batchRequest, cancellationToken);
+
+            logger.LogInformation(
+                "Batch posted {BatchCount}/{TotalCount} time entries to Keka for employee {KekaEmployeeId}.",
+                batchRequest.Count, entries.Count, kekaEmployee.Id);
+
+            return batchRequest.Count;
+        }
+        catch (Exception ex)
         {
-            logger.LogWarning("Batch for employee {Email} resolved to 0 valid entries — nothing posted to Keka.", employeeEmail);
-            throw new InvalidOperationException($"Batch for employee {employeeEmail} resolved to 0 valid entries — nothing posted to Keka.");
+            logger.LogError(ex, "Failed to log batch of {Count} time entries for employee {Email}.", entries.Count, employeeEmail);
+            throw new InvalidOperationException(ex.Message);
         }
-
-        await kekaTimesheetEntryService.CreateTimesheetEntryAsync(kekaEmployee.Id, batchRequest, cancellationToken);
-
-        logger.LogInformation(
-            "Batch posted {BatchCount}/{TotalCount} time entries to Keka for employee {KekaEmployeeId}.",
-            batchRequest.Count, entries.Count, kekaEmployee.Id);
-
-        return batchRequest.Count;
     }
 
     private async Task<KekaProject?> ResolveKekaProjectAsync(ConnectWiseTimeEntry entry, CancellationToken cancellationToken)
