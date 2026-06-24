@@ -26,4 +26,7 @@ public static class SyncTypes
 
     /// <summary>Dedicated record for project transient timeout failures that should be retried on the next run.</summary>
     public const string RetryProjects = "RetryProjects";
+
+    /// <summary>Dedicated record for timesheet transient timeout failures that should be retried on the next run.</summary>
+    public const string RetryTimeSheets = "RetryTimeSheets";
 }

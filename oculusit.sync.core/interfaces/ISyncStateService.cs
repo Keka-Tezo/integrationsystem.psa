@@ -47,6 +47,18 @@ public interface ISyncStateService
     Task SaveRetryProjectsAsync(IReadOnlyList<RetryProjectEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Overwrites the <c>timeSheets</c> attribute on the <c>RetryTimeSheets</c> record with timesheets that timed out this run.
+    /// Pass an empty list to clear after a clean run.
+    /// </summary>
+    Task SaveRetryTimeSheetsAsync(IReadOnlyList<RetryTimeSheetEntry> retryEntries, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads retry timesheets from the <c>RetryTimeSheets</c> record.
+    /// Each entry includes timesheet id and context for retry processing.
+    /// </summary>
+    Task<IReadOnlyList<RetryTimeSheetEntry>> GetRetryTimeSheetsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Overwrites the <c>summary</c> attribute on the <c>Company</c> record with the latest run counts.
     /// </summary>
     Task SaveCompanySummaryAsync(CompanySyncSummary summary, DateTime lastUpdatedAt, CancellationToken cancellationToken = default);
