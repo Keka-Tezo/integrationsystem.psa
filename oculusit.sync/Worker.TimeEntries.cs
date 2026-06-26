@@ -135,9 +135,8 @@ public sealed partial class Worker
                             timesheet.Id, stoppingToken);
 
                         var hasRejection = auditTrail.Any(a =>
-                            IsResubmissionStatus(a.StatusAfter)  ||
-                            IsResubmissionStatus(a.StatusBefore) ||
-                            IsResubmissionStatus(a.TransactionType));
+                            IsResubmissionStatus(a.NewValue) ||
+                            a.Message?.Contains("rejection", StringComparison.OrdinalIgnoreCase) == true);
 
                         if (!hasRejection)
                         {
@@ -298,9 +297,9 @@ public sealed partial class Worker
         if (string.IsNullOrWhiteSpace(status))
             return false;
 
-        return status.Contains("Reject",          StringComparison.OrdinalIgnoreCase) ||
-               status.Contains("ErrorsCorrected", StringComparison.OrdinalIgnoreCase) ||
-               status.Contains("Written Off",     StringComparison.OrdinalIgnoreCase);
+        return status.Contains("Rejected",           StringComparison.OrdinalIgnoreCase) ||
+               status.Contains("Errors Corrected",   StringComparison.OrdinalIgnoreCase) ||
+               status.Contains("Written Off",        StringComparison.OrdinalIgnoreCase);
     }
 
     private static DateTime ResolveStartWeekUtc(Dictionary<int, HashSet<int>> syncedPeriods, DateTime previousWeekStartUtc)
