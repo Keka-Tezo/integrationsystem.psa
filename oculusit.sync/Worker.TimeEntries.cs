@@ -7,7 +7,7 @@ namespace oculusit.sync;
 
 public sealed partial class Worker
 {
-    private async Task SyncTimeSheetAsync(IReadOnlyList<string> retryTimeSheetIds, CancellationToken stoppingToken)
+    private async Task SyncTimeSheetAsync(IReadOnlyList<string> retryTimeSheetIds, string timeOffWorkType, CancellationToken stoppingToken)
     {
         var timeSheetState = await syncStateService.GetAsync(SyncTypes.TimeSheets, stoppingToken);
 
@@ -153,16 +153,6 @@ public sealed partial class Worker
                             "but re-sync to Keka is not yet supported. Please update this timesheet in Keka manually.",
                             timesheet.Id, memberId, year, period);
 
-                        retryTimeSheetEntries.Add(new RetryTimeSheetEntry
-                        {
-                            Id = timesheet.Id.ToString(CultureInfo.InvariantCulture),
-                            MemberId = memberId,
-                            Email = employeeState.Email,
-                            Year = year,
-                            Period = period,
-                            ErrorMessage = "Timesheet has rejection history and cannot be automatically re-synced. Please update this timesheet in Keka manually."
-                        });
-
                         totalSkipped++;
                         continue;
                     }
@@ -173,7 +163,7 @@ public sealed partial class Worker
                         timesheet.Id, memberId, year, period);
 
                     var timeEntries = await connectWiseTimeEntryService.GetTimeEntriesByTimesheetIdAsync(
-                        timesheet.Id, stoppingToken);
+                        timesheet.Id, timeOffWorkType, stoppingToken);
 
                     var postedCount = await timeEntryOrchestrationService.LogTimeEntriesBatchAsync(
                         timeEntries,
