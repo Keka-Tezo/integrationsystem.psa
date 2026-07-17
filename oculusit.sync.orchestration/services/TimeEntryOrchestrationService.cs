@@ -120,7 +120,10 @@ public sealed class TimeEntryOrchestrationService(
         CancellationToken cancellationToken = default)
     {
         if (entries is null || entries.Count == 0)
-            throw new InvalidOperationException($"Skipping batch of time entries because there are 0 entries.");
+        {
+            logger.LogWarning($"Skipping batch of time entries because there are 0 entries.");
+            return 0;
+        }
 
         if (string.IsNullOrWhiteSpace(employeeEmail))
         {
@@ -154,7 +157,7 @@ public sealed class TimeEntryOrchestrationService(
             if (kekaProject is null)
             {
                 logger.LogWarning("Skipping time entry {TimeEntryId} in batch — Keka project could not be resolved.", entry.Id);
-                throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch — Keka project could not be resolved.");
+                throw new InvalidOperationException($"Skipping time entry {entry.Id} in batch —  Connectwise project {entry.Project?.Name} not found in keka or Keka project could not be resolved.");
             }
 
             var taskName = ResolveTaskName(entry.BillableOption, entry.ChargeToType);
@@ -461,7 +464,7 @@ public sealed class TimeEntryOrchestrationService(
             "ChargeCode" => isBillable ? BillableChargeCodeTask : NonBillableChargeCodeTask,
             "ServiceTicket" => isBillable ? BillableServiceTicketTask : NonBillableServiceTicketTask,
             "ProjectTicket" => isBillable ? BillableProjectTicketTask : NonBillableProjectTicketTask,
-            _ => string.Empty
+            _ => isBillable ? BillableChargeCodeTask : NonBillableChargeCodeTask,
         };
     }
 
