@@ -191,7 +191,7 @@ public sealed class TimeEntryOrchestrationService(
                 TaskId           = taskId,
                 NumberOfMinutes  = minutes,
                 Date             = normalizedStart.Date,
-                Comment          = string.IsNullOrWhiteSpace(entry.Notes)
+                Comment          = $"CW TimeEntry {entry.Id}",
                                             ? $"CW TimeEntry {entry.Id}"
                                             : $"CW TimeEntry {entry.Id} - {entry.Notes}",
                 StartTime        = ToKekaTimeInt(normalizedStart),
