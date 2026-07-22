@@ -34,5 +34,7 @@ FROM base AS final
 USER root
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY oculusit.sync/entrypoint.sh .
+RUN chmod +x /app/entrypoint.sh
 VOLUME ["/data/sync-state"]
-ENTRYPOINT ["dotnet", "oculusit.sync.dll"]
+ENTRYPOINT ["/app/entrypoint.sh"]
