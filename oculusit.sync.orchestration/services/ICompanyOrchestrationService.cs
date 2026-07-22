@@ -35,7 +35,7 @@ public sealed class CompanySyncResult
 
     /// <summary>
     /// The <c>lastUpdated</c> value of the last record fetched from ConnectWise, ordered ascending.
-    /// Used as <c>LastUpdatedAt</c> in DynamoDB so the next incremental run starts exactly from here.
+    /// Used as <c>LastUpdatedAt</c> in the sync state store so the next incremental run starts exactly from here.
     /// Falls back to the worker's <c>syncStartedAt</c> when no records were fetched.
     /// </summary>
     public DateTime? LastRecordUpdatedAt { get; init; }

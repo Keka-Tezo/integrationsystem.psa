@@ -27,7 +27,7 @@ public sealed class CompanyOrchestrationService(
         var kekaClientIdByCompanyId = await BuildKekaClientLookupAsync(cancellationToken);
 
         // Persist existing CW→Keka mappings before processing so that any
-        // companies already mapped in Keka are recorded in DynamoDB upfront.
+        // companies already mapped in Keka are recorded in the sync state store upfront.
         // Only include entries whose CW company ID exists in the current ConnectWise companies list.
         var cwCompanyIds = companies
             .Select(c => c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))

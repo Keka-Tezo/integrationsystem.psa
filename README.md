@@ -1,8 +1,8 @@
 # oculusit.sync
 
-A .NET 10 Worker Service that synchronises ConnectWise companies, projects, and time entries to the Keka HR platform. The service runs as an AWS ECS Fargate task and persists sync state in DynamoDB.
+A .NET 10 Worker Service that synchronises ConnectWise companies, projects, project statuses, and time entries to the Keka HR platform. The service is cloud-agnostic — no AWS or other cloud SDK dependency — and persists sync state as JSON files on a local/mounted data directory.
 
-> Syncs PSA / CoreHR data: ConnectWise → Keka (and Keka → ConnectWise) for the OculusIT customer.
+> Syncs PSA / CoreHR data: ConnectWise → Keka for the OculusIT customer.
 
 ---
 
@@ -11,114 +11,56 @@ A .NET 10 Worker Service that synchronises ConnectWise companies, projects, and 
 | Tool | Purpose |
 |------|---------|
 | [.NET 10 SDK](https://dotnet.microsoft.com/download) | Build & run locally |
-| [Docker](https://docs.docker.com/get-docker/) | Build container image |
-| [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) | ECR authentication & ECS deployment |
-
-Ensure your AWS CLI is configured with credentials that have permissions for ECR (`ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`, etc.) and ECS (`ecs:UpdateService`).
+| [Docker](https://docs.docker.com/get-docker/) | Build & run the container image |
 
 ---
 
 ## Configuration
 
-Application settings are injected at runtime via **AWS SSM Parameter Store** (see `infra/task-definition.json`).  
-For local development, use `appsettings.Development.json` or [.NET User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets).
+Application settings come from `appsettings.json`, with `appsettings.Development.json` and .NET User Secrets layered on top for local development. Any setting can be overridden via environment variables using the `Section__Key` convention (e.g. `Keka__ClientSecret`, `SyncState__DataDirectory`).
+
+Key sections:
+
+| Section | Purpose |
+|---------|---------|
+| `Keka` | Keka API base URL, identity/token endpoint, client credentials |
+| `ConnectWise` | ConnectWise base URL, company ID, API keys |
+| `SyncState` | `DataDirectory` — where sync-state JSON files are written (default `/data/sync-state`) |
 
 ---
 
-## Docker Build to ECR Push
+## Run locally (no Docker)
 
-All commands below must be run from the **solution root directory** (the folder containing `oculusit.sync/`, `oculusit.sync.core/`, etc.) because the `Dockerfile` uses relative `../` paths for the multi-project COPY steps.
+```bash
+dotnet run --project oculusit.sync/oculusit.sync.csproj
+```
 
-```
-AWS Account ID : 272403792718
-Region         : ap-south-1
-ECR Repository : oculusit-integration-service
-```
+Uses `appsettings.Development.json`, which points `SyncState:DataDirectory` at a relative `./data/sync-state` folder.
 
 ---
 
-### Step 1 — Authenticate Docker to ECR
+## Run in Docker
+
+All commands below must be run from the **solution root directory** (the folder containing `oculusit.sync/`, `oculusit.sync.core/`, etc.) — the build context needs every project folder as a sibling of `oculusit.sync/`.
+
+### Build the image
 
 ```sh
-aws ecr get-login-password --region ap-south-1 \
-  | docker login --username AWS --password-stdin \
-    272403792718.dkr.ecr.ap-south-1.amazonaws.com
+docker build -f oculusit.sync/Dockerfile -t oculusit-integration-service:latest .
 ```
 
----
+### Run the container
 
-### Step 2 — Build the Docker image
+Sync state is persisted to `/data/sync-state` inside the container — mount a host directory there so state survives restarts, and override the Keka/ConnectWise credentials via an env file:
 
 ```sh
-docker build \
-  -f oculusit.sync/Dockerfile \
-  -t oculusit-integration-service:latest \
-  .
+docker run --rm \
+  --env-file ./oculusit-sync.env \
+  -v "$(pwd)/data:/data/sync-state" \
+  oculusit-integration-service:latest
 ```
 
-> The `.` context is the solution root. The `Dockerfile` uses `../` relative paths to copy each `.csproj` file, which requires the build context to start one level above `oculusit.sync/`.
-
----
-
-### Step 3 — Tag the image for ECR
-
-```sh
-docker tag \
-  oculusit-integration-service:latest \
-  272403792718.dkr.ecr.ap-south-1.amazonaws.com/oculusit-integration-service:latest
-```
-
----
-
-### Step 4 — Push the image to ECR
-
-```sh
-docker push \
-  272403792718.dkr.ecr.ap-south-1.amazonaws.com/oculusit-integration-service:latest
-```
-
----
-
-### Step 5 — (Optional) Force a new ECS deployment
-
-After the image is pushed, force ECS to pull the new image and restart the task:
-
-```sh
-aws ecs update-service \
-  --cluster <your-cluster-name> \
-  --service <your-service-name> \
-  --force-new-deployment \
-  --region ap-south-1
-```
-
-Replace `<your-cluster-name>` and `<your-service-name>` with your actual ECS cluster and service names.
-
----
-
-### All-in-one script (PowerShell)
-
-```powershell
-$ACCOUNT_ID = "272403792718"
-$REGION     = "ap-south-1"
-$REPO       = "oculusit-integration-service"
-$TAG        = "latest"
-$ECR_URI    = "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO`:$TAG"
-
-# 1. Authenticate
-aws ecr get-login-password --region $REGION |
-  docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
-
-# 2. Build
-docker build -f oculusit.sync/Dockerfile -t "$REPO`:$TAG" .
-
-# 3. Tag
-docker tag "$REPO`:$TAG" $ECR_URI
-
-# 4. Push
-docker push $ECR_URI
-
-Write-Host "Image pushed: $ECR_URI"
-```
+Each run performs one full sync pass and exits — schedule repeat runs however suits your environment (cron, a container orchestrator, a scheduled task, etc.).
 
 ---
 
@@ -126,22 +68,8 @@ Write-Host "Image pushed: $ECR_URI"
 
 ```
 oculusit.sync/               # Worker Service entry point (BackgroundService)
-oculusit.sync.core/          # Domain models, interfaces, DynamoDB state service
+oculusit.sync.core/          # Domain models, interfaces, file-based sync state service
 oculusit.sync.orchestration/ # Company & project sync orchestration logic
 oculusit.sync.connectwise/   # ConnectWise API client
 oculusit.sync.keka/          # Keka HR API client
-infra/
-  task-definition.json       # ECS Fargate task definition
 ```
-
----
-
-## Infrastructure
-
-| Resource | Value |
-|----------|-------|
-| ECS Task family | `oculusit-integration-task` |
-| Container name | `oculusit-integration-service` |
-| Execution & Task role | `arn:aws:iam::272403792718:role/OculusitIntegrationTaskRole` |
-| CloudWatch log group | `/ecs/oculusit-integration` |
-| DynamoDB table | Resolved from SSM `oculusit/sync/DynamoDB/TableName` |

@@ -10,7 +10,7 @@ public sealed class ProjectSyncResult
     public IReadOnlyList<FailedProjectEntry> FailedEntries { get; init; } = [];
 }
 
-/// <summary>Carries the outcome of a project status sync comparison between ConnectWise and the existing DynamoDB state.</summary>
+/// <summary>Carries the outcome of a project status sync comparison between ConnectWise and the existing sync state.</summary>
 public sealed class ProjectStatusSyncResult
 {
     /// <summary>The fully merged list of project status entries to persist (if HasChanges is true).</summary>

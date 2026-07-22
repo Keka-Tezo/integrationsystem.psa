@@ -10,11 +10,11 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["../oculusit.sync/oculusit.sync.csproj", "oculusit.sync/"]
-COPY ["../oculusit.sync.orchestration/oculusit.sync.orchestration.csproj", "oculusit.sync.orchestration/"]
-COPY ["../oculusit.sync.connectwise/oculusit.sync.connectwise.csproj", "oculusit.sync.connectwise/"]
-COPY ["../oculusit.sync.core/oculusit.sync.core.csproj", "oculusit.sync.core/"]
-COPY ["../oculusit.sync.keka/oculusit.sync.keka.csproj", "oculusit.sync.keka/"]
+COPY ["oculusit.sync/oculusit.sync.csproj", "oculusit.sync/"]
+COPY ["oculusit.sync.orchestration/oculusit.sync.orchestration.csproj", "oculusit.sync.orchestration/"]
+COPY ["oculusit.sync.connectwise/oculusit.sync.connectwise.csproj", "oculusit.sync.connectwise/"]
+COPY ["oculusit.sync.core/oculusit.sync.core.csproj", "oculusit.sync.core/"]
+COPY ["oculusit.sync.keka/oculusit.sync.keka.csproj", "oculusit.sync.keka/"]
 RUN dotnet restore "./oculusit.sync/oculusit.sync.csproj"
 COPY . .
 WORKDIR "/src/oculusit.sync"
@@ -27,6 +27,12 @@ RUN dotnet publish "./oculusit.sync.csproj" -c $BUILD_CONFIGURATION -o /app/publ
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
+# Reset to root: the sync-state volume is typically a host bind mount whose ownership
+# can't be predicted at build time, so the non-root $APP_UID from the base image can't
+# reliably write to it. This worker has no exposed network listener, so the extra risk
+# from running as root in-container is minimal.
+USER root
 WORKDIR /app
 COPY --from=publish /app/publish .
+VOLUME ["/data/sync-state"]
 ENTRYPOINT ["dotnet", "oculusit.sync.dll"]

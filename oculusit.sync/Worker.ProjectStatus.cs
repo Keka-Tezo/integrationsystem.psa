@@ -33,7 +33,7 @@ public sealed partial class Worker
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Project status sync failed. The failure will be recorded in DynamoDB.");
+            logger.LogError(ex, "Project status sync failed. The failure will be recorded in the sync state store.");
 
             try
             {
@@ -43,7 +43,7 @@ public sealed partial class Worker
             catch (Exception innerEx)
             {
                 // Swallow — we must not let a logging failure crash the worker.
-                logger.LogError(innerEx, "Failed to persist project status sync failure to DynamoDB.");
+                logger.LogError(innerEx, "Failed to persist project status sync failure to the sync state store.");
             }
         }
     }

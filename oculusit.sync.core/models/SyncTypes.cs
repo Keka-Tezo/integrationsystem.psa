@@ -1,7 +1,7 @@
 namespace oculusit.sync.core.models;
 
 /// <summary>
-/// Well-known SyncType partition key values used in DynamoDB sync state records.
+/// Well-known SyncType key values used in sync state records.
 /// </summary>
 public static class SyncTypes
 {

@@ -1,4 +1,3 @@
-using Amazon.DynamoDBv2;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using oculusit.sync.core.configurations;
@@ -13,13 +12,10 @@ public static class CoreServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddDefaultAWSOptions(configuration.GetAWSOptions());
-        services.AddAWSService<IAmazonDynamoDB>();
+        services.Configure<FileSyncStateConfiguration>(
+            configuration.GetSection(FileSyncStateConfiguration.SectionName));
 
-        services.Configure<DynamoDbConfiguration>(
-            configuration.GetSection(DynamoDbConfiguration.SectionName));
-
-        services.AddSingleton<ISyncStateService, DynamoDbSyncStateService>();
+        services.AddSingleton<ISyncStateService, FileSyncStateService>();
 
         return services;
     }

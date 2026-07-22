@@ -22,7 +22,7 @@ public sealed class ProjectOrchestrationService(
 
     /// <summary>
     /// The 6 standard tasks to create for every Keka project.
-    /// Key = short code stored in DynamoDB; Name = display name sent to Keka;
+    /// Key = short code stored in the sync state store; Name = display name sent to Keka;
     /// BillingType: 1 = Billable, 0 = Non-Billable.
     /// </summary>
     private static readonly IReadOnlyList<(string Key, string Name, int BillingType)> ProjectTaskDefinitions =
@@ -466,7 +466,7 @@ public sealed class ProjectOrchestrationService(
 
         var definitionsByKey = ProjectTaskDefinitions.ToDictionary(t => t.Key, t => (t.Name, t.BillingType));
 
-        // Only call the Keka API when there is no DynamoDB state to rely on.
+        // Only call the Keka API when there is no persisted sync state to rely on.
         // When state exists the caller has already filtered keysToCreate to only the failed/missing ones.
         HashSet<string> existingNames = [];
         if (checkKekaForExistingTasks)

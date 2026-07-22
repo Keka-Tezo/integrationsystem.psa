@@ -40,12 +40,12 @@ public sealed partial class Worker(
             await SyncProjectStatusAsync(syncStartedAt, stoppingToken);
             await SyncTimeEntryEmployeesAsync(stoppingToken);
 
-            var retryCompanyIds = await GetRetryCompanyIdsFromSyncStateAsync(stoppingToken);
-            await SyncCompaniesAsync(syncStartedAt, retryCompanyIds, defaultBillingType, defaultProjectManager, stoppingToken);
-            var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
-            await SyncProjectsAsync(syncStartedAt, retryProjectIds, defaultBillingType, defaultProjectManager, stoppingToken);
-            var retryTimeSheetIds = await GetRetryTimeSheetIdsFromSyncStateAsync(stoppingToken);
-            await SyncTimeSheetAsync(retryTimeSheetIds, timeOffWorkType, stoppingToken);
+            //var retryCompanyIds = await GetRetryCompanyIdsFromSyncStateAsync(stoppingToken);
+            //await SyncCompaniesAsync(syncStartedAt, retryCompanyIds, defaultBillingType, defaultProjectManager, stoppingToken);
+            //var retryProjectIds = await GetRetryProjectIdsFromSyncStateAsync(stoppingToken);
+            //await SyncProjectsAsync(syncStartedAt, retryProjectIds, defaultBillingType, defaultProjectManager, stoppingToken);
+            //var retryTimeSheetIds = await GetRetryTimeSheetIdsFromSyncStateAsync(stoppingToken);
+            //await SyncTimeSheetAsync(retryTimeSheetIds, timeOffWorkType, stoppingToken);
 
             logger.LogInformation("Sync complete. Worker shutting down.");
         }
@@ -60,7 +60,7 @@ public sealed partial class Worker(
         finally
         {
             // Stop the host so the process exits with a non-zero code,
-            // which signals ECS/container orchestrators to restart the task.
+            // which signals the container orchestrator to restart the task.
             lifetime.StopApplication();
         }
     }

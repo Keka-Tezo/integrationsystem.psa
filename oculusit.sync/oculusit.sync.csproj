@@ -9,10 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.18.1" />
-    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.36" />
-    <PackageReference Include="AWSSDK.SSO" Version="4.0.2.27" />
-    <PackageReference Include="AWSSDK.SSOOIDC" Version="4.0.3.28" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.6" />

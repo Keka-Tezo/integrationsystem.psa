@@ -17,7 +17,7 @@ public sealed partial class Worker
 
         if (syncState is null)
         {
-            logger.LogInformation("No previous sync state found in DynamoDB. Running full company sync.");
+            logger.LogInformation("No previous sync state found. Running full company sync.");
 
             var syncedEntries = await companyOrchestration.SyncCompaniesToKekaAsync(defaultProjectManager, defaultBillingType, stoppingToken);
             var lastUpdatedAt = await PersistCompanySyncResultAsync(

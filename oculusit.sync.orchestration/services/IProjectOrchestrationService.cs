@@ -8,8 +8,8 @@ public interface IProjectOrchestrationService
     /// <summary>
     /// Full sync — fetches all ConnectWise projects and records them.
     /// <paramref name="companySyncState"/> is used to resolve the Keka client ID.
-    /// <paramref name="projectStatusSyncState"/> provides the project status mapping from DynamoDB.
-    /// <paramref name="allEmployeesState"/> provides all employees deduplication state from DynamoDB.
+    /// <paramref name="projectStatusSyncState"/> provides the project status mapping from the sync state store.
+    /// <paramref name="allEmployeesState"/> provides all employees deduplication state from the sync state store.
     /// </summary>
     Task<ProjectSyncResult> SyncProjectsAsync(
         SyncState companySyncState,
@@ -23,7 +23,7 @@ public interface IProjectOrchestrationService
     /// Incremental sync — fetches projects updated since <paramref name="projectSyncState"/>.LastUpdatedAt,
     /// merges with retry projects from RetryProjects sync state, and processes unique project IDs.
     /// <paramref name="companySyncState"/> is used to resolve the Keka client ID.
-    /// <paramref name="projectStatusSyncState"/> provides the project status mapping from DynamoDB.
+    /// <paramref name="projectStatusSyncState"/> provides the project status mapping from the sync state store.
     /// Returns newly created entries and any failures.
     /// </summary>
     Task<ProjectSyncResult> SyncProjectsIncrementalAsync(
@@ -48,7 +48,7 @@ public sealed class ProjectSyncResult
 
     /// <summary>
     /// The <c>lastUpdated</c> value of the last record fetched from ConnectWise, ordered ascending.
-    /// Used as <c>LastUpdatedAt</c> in DynamoDB so the next incremental run starts exactly from here.
+    /// Used as <c>LastUpdatedAt</c> in the sync state store so the next incremental run starts exactly from here.
     /// Falls back to the worker's <c>syncStartedAt</c> when no records were fetched.
     /// </summary>
     public DateTime? LastRecordUpdatedAt { get; init; }
